@@ -83,7 +83,7 @@ jobs:
           ext=""
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
           if [ "$GOOS" = "windows" ]; then
-            powershell -command "Compress-Archive -Path sonarsweep${ext} -DestinationPath ${{ matrix.artifact }}"
+            zip ${{ matrix.artifact }} sonarsweep${ext}
           else
             tar -czf ${{ matrix.artifact }} sonarsweep${ext}
           fi
