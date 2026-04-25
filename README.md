@@ -124,11 +124,11 @@ SonarSweep stores configuration in `sonarsweep.json` in the same directory:
 
 ```json
 {
-  "sonarqube_url": "http://35.213.189.199:9000",
+  "sonarqube_url": "http://12.345.678.199:9000",
   "projects": [
-    "people-web-ppd",
-    "people-web-stg",
-    "people-api-ppd"
+    "project-web-ppd",
+    "project-web-stg",
+    "project-api-ppd"
   ],
   "software_qualities": [
     "RELIABILITY",
