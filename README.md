@@ -11,8 +11,8 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat-square&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square)](https://github.com/yourname/sonarsweep/releases)
-[![Build](https://img.shields.io/badge/Build-Passing-brightgreen?style=flat-square)](https://github.com/yourname/sonarsweep/actions)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square)](https://github.com/ariffrahimin/sonarsweep/releases)
+[![Build](https://img.shields.io/badge/Build-Passing-brightgreen?style=flat-square)](https://github.com/ariffrahimin/sonarsweep/actions)
 
 ---
 
@@ -32,33 +32,33 @@
 
 ### Option 1: Download Binary (Fastest)
 
-Download the pre-built binary for your platform from the [Releases page](https://github.com/yourname/sonarsweep/releases):
+Download the pre-built binary for your platform from the [Releases page](https://github.com/ariffrahimin/sonarsweep/releases):
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/yourname/sonarsweep/releases/latest/download/sonarsweep-darwin-arm64.tar.gz | tar -xz
+curl -L https://github.com/ariffrahimin/sonarsweep/releases/latest/download/sonarsweep-darwin-arm64.tar.gz | tar -xz
 
 # macOS (Intel)
-curl -L https://github.com/yourname/sonarsweep/releases/latest/download/sonarsweep-darwin-amd64.tar.gz | tar -xz
+curl -L https://github.com/ariffrahimin/sonarsweep/releases/latest/download/sonarsweep-darwin-amd64.tar.gz | tar -xz
 
 # Linux
-curl -L https://github.com/yourname/sonarsweep/releases/latest/download/sonarsweep-linux-amd64.tar.gz | tar -xz
+curl -L https://github.com/ariffrahimin/sonarsweep/releases/latest/download/sonarsweep-linux-amd64.tar.gz | tar -xz
 
 # Windows (PowerShell)
-irm https://github.com/yourname/sonarsweep/releases/latest/download/sonarsweep-windows-amd64.zip -o sonarsweep.zip
+irm https://github.com/ariffrahimin/sonarsweep/releases/latest/download/sonarsweep-windows-amd64.zip -o sonarsweep.zip
 Expand-Archive sonarsweep.zip -DestinationPath .
 ```
 
 ### Option 2: Homebrew (Recommended for macOS/Linux)
 
 ```bash
-brew install yourname/tap/sonarsweep
+brew install ariffrahimin/tap/sonarsweep
 ```
 
 ### Option 3: Build from Source
 
 ```bash
-git clone https://github.com/yourname/sonarsweep.git
+git clone https://github.com/ariffrahimin/sonarsweep.git
 cd sonarsweep
 go build -o sonarsweep main.go
 ```

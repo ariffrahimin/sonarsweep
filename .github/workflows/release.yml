@@ -133,7 +133,7 @@ jobs:
       - name: Checkout Homebrew tap
         uses: actions/checkout@v4
         with:
-          repository: yourname/homebrew-sonarsweep
+          repository: ariffrahimin/homebrew-sonarsweep
           token: ${{ secrets.HOMEBREW_PAT }}
           path: homebrew-tap
 
