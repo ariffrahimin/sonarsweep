@@ -156,12 +156,14 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           cd homebrew-tap
-          pwd
-          ls -la ../artifacts/ || ls -la ../../artifacts/
-          SONAR_DARWIN_ARM64=$(find ../artifacts/ -type f -name "sonarsweep-darwin-arm64.tar.gz" | head -1)
-          SONAR_DARWIN_AMD64=$(find ../artifacts/ -type f -name "sonarsweep-darwin-amd64.tar.gz" | head -1)
-          SONAR_LINUX=$(find ../artifacts/ -type f -name "sonarsweep-linux-amd64.tar.gz" | head -1)
-          SONAR_WINDOWS=$(find ../artifacts/ -type f -name "sonarsweep-windows-amd64.zip" | head -1)
+          
+          # Use absolute path to the repo root artifacts
+          REPO_ROOT="/home/runner/work/sonarsweep/sonarsweep"
+          
+          SONAR_DARWIN_ARM64="${REPO_ROOT}/artifacts/sonarsweep-darwin-arm64.tar.gz/sonarsweep-darwin-arm64.tar.gz"
+          SONAR_DARWIN_AMD64="${REPO_ROOT}/artifacts/sonarsweep-darwin-amd64.tar.gz/sonarsweep-darwin-amd64.tar.gz"
+          SONAR_LINUX="${REPO_ROOT}/artifacts/sonarsweep-linux-amd64.tar.gz/sonarsweep-linux-amd64.tar.gz"
+          SONAR_WINDOWS="${REPO_ROOT}/artifacts/sonarsweep-windows-amd64.zip/sonarsweep-windows-amd64.zip"
           
           SHA_DARWIN_ARM64=$(shasum -a 256 "$SONAR_DARWIN_ARM64" | awk '{print $1}')
           SHA_DARWIN_AMD64=$(shasum -a 256 "$SONAR_DARWIN_AMD64" | awk '{print $1}')
