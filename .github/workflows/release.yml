@@ -142,6 +142,13 @@ jobs:
         with:
           path: artifacts
 
+      - name: Debug artifacts
+        run: |
+          echo "=== artifacts directory ==="
+          ls -la ../artifacts/
+          echo "=== find all files ==="
+          find ../artifacts -type f -ls
+
       - name: Update formula
         env:
           VERSION: ${{ github.ref_name }}
