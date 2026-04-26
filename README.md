@@ -94,7 +94,7 @@ Enter      Confirm / Select
 Esc        Cancel / Quit
 ```
 
-Your CSV files will be saved in folders named after each project (e.g. `people-web-ppd/sonarqube_issues_20260425.csv`).
+Your CSV files will be saved in folders named after each project (e.g. `project-web-ppd/sonarqube_issues_20260425.csv`).
 
 ---
 
