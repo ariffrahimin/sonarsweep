@@ -148,28 +148,27 @@ jobs:
           pwd
           echo "=== artifacts directory ==="
           ls -la artifacts/
-          echo "=== find all files ==="
+          echo "=== find all files in nested dirs ==="
           find artifacts/ -type f -ls
 
       - name: Update formula
         env:
           VERSION: ${{ github.ref_name }}
         run: |
-          cd homebrew-tap
-          
-          # Use absolute path to the repo root artifacts
-          REPO_ROOT="/home/runner/work/sonarsweep/sonarsweep"
-          
-          SONAR_DARWIN_ARM64="${REPO_ROOT}/artifacts/sonarsweep-darwin-arm64.tar.gz/sonarsweep-darwin-arm64.tar.gz"
-          SONAR_DARWIN_AMD64="${REPO_ROOT}/artifacts/sonarsweep-darwin-amd64.tar.gz/sonarsweep-darwin-amd64.tar.gz"
-          SONAR_LINUX="${REPO_ROOT}/artifacts/sonarsweep-linux-amd64.tar.gz/sonarsweep-linux-amd64.tar.gz"
-          SONAR_WINDOWS="${REPO_ROOT}/artifacts/sonarsweep-windows-amd64.zip/sonarsweep-windows-amd64.zip"
-          
+          ARTIFACTS_DIR="/home/runner/work/sonarsweep/sonarsweep/artifacts"
+
+          SONAR_DARWIN_ARM64="${ARTIFACTS_DIR}/sonarsweep-darwin-arm64.tar.gz/sonarsweep-darwin-arm64.tar.gz"
+          SONAR_DARWIN_AMD64="${ARTIFACTS_DIR}/sonarsweep-darwin-amd64.tar.gz/sonarsweep-darwin-amd64.tar.gz"
+          SONAR_LINUX="${ARTIFACTS_DIR}/sonarsweep-linux-amd64.tar.gz/sonarsweep-linux-amd64.tar.gz"
+          SONAR_WINDOWS="${ARTIFACTS_DIR}/sonarsweep-windows-amd64.zip/sonarsweep-windows-amd64.zip"
+
           SHA_DARWIN_ARM64=$(shasum -a 256 "$SONAR_DARWIN_ARM64" | awk '{print $1}')
           SHA_DARWIN_AMD64=$(shasum -a 256 "$SONAR_DARWIN_AMD64" | awk '{print $1}')
           SHA_LINUX=$(shasum -a 256 "$SONAR_LINUX" | awk '{print $1}')
           SHA_WINDOWS=$(shasum -a 256 "$SONAR_WINDOWS" | awk '{print $1}')
-          
+
+          cd homebrew-tap
+
           sed -i '' \
             -e "s|sha256-darwin-arm64 = .*|sha256-darwin-arm64 = $SHA_DARWIN_ARM64|" \
             -e "s|sha256-darwin-amd64 = .*|sha256-darwin-amd64 = $SHA_DARWIN_AMD64|" \
