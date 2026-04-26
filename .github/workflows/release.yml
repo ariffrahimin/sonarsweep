@@ -142,10 +142,11 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           cd homebrew-tap
-          SHA_DARWIN_ARM64=$(shasum -a 256 artifacts/sonarsweep-darwin-arm64.tar.gz/* | awk '{print $1}')
-          SHA_DARWIN_AMD64=$(shasum -a 256 artifacts/sonarsweep-darwin-amd64.tar.gz/* | awk '{print $1}')
-          SHA_LINUX=$(shasum -a 256 artifacts/sonarsweep-linux-amd64.tar.gz/* | awk '{print $1}')
-          SHA_WINDOWS=$(shasum -a 256 artifacts/sonarsweep-windows-amd64.zip/* | awk '{print $1}')
+          
+          SHA_DARWIN_ARM64=$(find ../artifacts -name "sonarsweep-darwin-arm64.tar.gz" -type f -exec shasum -a 256 {} \; | awk '{print $1}')
+          SHA_DARWIN_AMD64=$(find ../artifacts -name "sonarsweep-darwin-amd64.tar.gz" -type f -exec shasum -a 256 {} \; | awk '{print $1}')
+          SHA_LINUX=$(find ../artifacts -name "sonarsweep-linux-amd64.tar.gz" -type f -exec shasum -a 256 {} \; | awk '{print $1}')
+          SHA_WINDOWS=$(find ../artifacts -name "sonarsweep-windows-amd64.zip" -type f -exec shasum -a 256 {} \; | awk '{print $1}')
           
           sed -i '' \
             -e "s|sha256-darwin-arm64 = .*|sha256-darwin-arm64 = $SHA_DARWIN_ARM64|" \
