@@ -41,7 +41,8 @@ curl -sSL https://raw.githubusercontent.com/ariffrahimin/sonarsweep/main/install
 ### Option 2: Homebrew (Recommended for macOS/Linux)
 
 ```bash
-brew install ariffrahimin/tap/sonarsweep
+brew tap ariffrahimin/sonarsweep
+brew install sonarsweep
 ```
 
 ### Option 3: Build from Source
