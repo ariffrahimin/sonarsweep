@@ -71,6 +71,18 @@ USER_TOKEN=your_sonarqube_token_here
 
 On the first run, SonarSweep will ask for your SonarQube URL and Project Key. After that, it remembers your settings.
 
+### How to get project key
+
+Find project keys in your SonarQube url after selecting project from project list.
+
+Example url:
+
+```
+http://url-link:9000/dashboard?id=people-web-ppd
+```
+
+Project key is `people-web-ppd`
+
 ### Step 3: Navigate the TUI
 
 ```
