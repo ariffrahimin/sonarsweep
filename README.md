@@ -50,6 +50,7 @@ brew install sonarsweep
 ```bash
 git clone https://github.com/ariffrahimin/sonarsweep.git
 cd sonarsweep
+go mod tidy
 go build -o sonarsweep main.go
 ```
 
