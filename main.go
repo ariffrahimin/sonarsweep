@@ -61,8 +61,11 @@ func loadConfig() Config {
 	}
 	defer file.Close()
 	var config Config
-	if err := json.NewDecoder(file).Decode(&config); err != nil {
+if err := json.NewDecoder(file).Decode(&config); err != nil {
 		return defaultConfig
+	}
+	if len(config.SoftwareQualities) == 0 {
+		config.SoftwareQualities = defaultConfig.SoftwareQualities
 	}
 	return config
 }
@@ -340,7 +343,7 @@ func initialModel() model {
 
 	config := loadConfig()
 	SONAR_URL = config.SonarURL
-	availableSoftwareQualities = config.SoftwareQualities
+	availableSoftwareQualities = defaultConfig.SoftwareQualities
 
 	availableProjects = []list.Item{}
 	for _, p := range config.Projects {
@@ -488,6 +491,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyEnter {
 				if i, ok := m.projectList.SelectedItem().(item); ok {
 					m.projectKey = string(i)
+
+					for i, sq := range availableSoftwareQualities {
+						for _, configSQ := range m.config.SoftwareQualities {
+							if sq == configSQ {
+								m.selectedQualities[i] = struct{}{}
+								break
+							}
+						}
+					}
 					m.state = stateQualities
 				}
 				return m, nil
@@ -908,7 +920,7 @@ func main() {
 
 	config := loadConfig()
 	SONAR_URL = config.SonarURL
-	availableSoftwareQualities = config.SoftwareQualities
+	availableSoftwareQualities = defaultConfig.SoftwareQualities
 	for _, p := range config.Projects {
 		availableProjects = append(availableProjects, item(p))
 	}
