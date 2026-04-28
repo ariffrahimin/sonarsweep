@@ -32,16 +32,10 @@
 
 ### Option 1: Install Script (Fastest)
 
-The install script automatically downloads the correct binary for your system and adds it to your PATH.
+The install script automatically downloads the correct binary for your system (macOS, Linux, Windows) and adds it to your PATH.
 
-**macOS and Linux:**
 ```bash
 curl -sSL https://raw.githubusercontent.com/ariffrahimin/sonarsweep/main/install.sh | bash
-```
-
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/ariffrahimin/sonarsweep/main/install.ps1 | iex
 ```
 
 ### Option 2: Homebrew (Recommended for macOS/Linux)
