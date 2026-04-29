@@ -160,10 +160,10 @@ jobs:
         run: |
           ARTIFACTS_DIR="${GITHUB_WORKSPACE}/artifacts"
 
-          SONAR_DARWIN_ARM64="${ARTIFACTS_DIR}/sonarsweep-darwin-arm64.tar.gz"
-          SONAR_DARWIN_AMD64="${ARTIFACTS_DIR}/sonarsweep-darwin-amd64.tar.gz"
-          SONAR_LINUX="${ARTIFACTS_DIR}/sonarsweep-linux-amd64.tar.gz"
-          SONAR_WINDOWS="${ARTIFACTS_DIR}/sonarsweep-windows-amd64.zip"
+          SONAR_DARWIN_ARM64=$(find "$ARTIFACTS_DIR" -name "sonarsweep-darwin-arm64.tar.gz" -type f | head -1)
+          SONAR_DARWIN_AMD64=$(find "$ARTIFACTS_DIR" -name "sonarsweep-darwin-amd64.tar.gz" -type f | head -1)
+          SONAR_LINUX=$(find "$ARTIFACTS_DIR" -name "sonarsweep-linux-amd64.tar.gz" -type f | head -1)
+          SONAR_WINDOWS=$(find "$ARTIFACTS_DIR" -name "sonarsweep-windows-amd64.zip" -type f | head -1)
 
           for f in "$SONAR_DARWIN_ARM64" "$SONAR_DARWIN_AMD64" "$SONAR_LINUX" "$SONAR_WINDOWS"; do
             [ -f "$f" ] || { echo "Missing artifact: $f"; exit 1; }
