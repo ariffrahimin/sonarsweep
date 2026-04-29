@@ -111,6 +111,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
       - name: Display structure of downloaded files
         run: ls -R artifacts
@@ -157,10 +158,10 @@ jobs:
         run: |
           ARTIFACTS_DIR="${GITHUB_WORKSPACE}/artifacts"
 
-          SONAR_DARWIN_ARM64="${ARTIFACTS_DIR}/sonarsweep-darwin-arm64.tar.gz/sonarsweep-darwin-arm64.tar.gz"
-          SONAR_DARWIN_AMD64="${ARTIFACTS_DIR}/sonarsweep-darwin-amd64.tar.gz/sonarsweep-darwin-amd64.tar.gz"
-          SONAR_LINUX="${ARTIFACTS_DIR}/sonarsweep-linux-amd64.tar.gz/sonarsweep-linux-amd64.tar.gz"
-          SONAR_WINDOWS="${ARTIFACTS_DIR}/sonarsweep-windows-amd64.zip/sonarsweep-windows-amd64.zip"
+          SONAR_DARWIN_ARM64="${ARTIFACTS_DIR}/sonarsweep-darwin-arm64.tar.gz"
+          SONAR_DARWIN_AMD64="${ARTIFACTS_DIR}/sonarsweep-darwin-amd64.tar.gz"
+          SONAR_LINUX="${ARTIFACTS_DIR}/sonarsweep-linux-amd64.tar.gz"
+          SONAR_WINDOWS="${ARTIFACTS_DIR}/sonarsweep-windows-amd64.zip"
 
           for f in "$SONAR_DARWIN_ARM64" "$SONAR_DARWIN_AMD64" "$SONAR_LINUX" "$SONAR_WINDOWS"; do
             [ -f "$f" ] || { echo "Missing artifact: $f"; exit 1; }
