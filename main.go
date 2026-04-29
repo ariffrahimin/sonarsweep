@@ -35,6 +35,7 @@ type Config struct {
 	SonarURL          string   `json:"sonarqube_url"`
 	Projects          []string `json:"projects"`
 	SoftwareQualities []string `json:"software_qualities"`
+	Token             string   `json:"token,omitempty"`
 }
 
 var defaultConfig = Config{
@@ -113,8 +114,8 @@ CONFIGURATION:
   Configuration is stored in 'sonarsweep.json'. You can edit this file
   directly or use the --add-project flag to add projects.
 
-  The token (USER_TOKEN) must be stored in a .env file or entered
-  securely in the TUI prompt.
+  The token (USER_TOKEN) must be stored in a .env file, saved in 
+  'sonarsweep.json', or entered securely in the TUI prompt.
 
   Default config location: ./sonarsweep.json
   Override with: --config /path/to/config.json
@@ -168,13 +169,32 @@ var (
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			MarginTop(1)
+
+	promptStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("69")).
+			Bold(true)
+
+	selectedActionStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("46")).
+			Bold(true).
+			Background(lipgloss.Color("235")).
+			Padding(0, 1).
+			MarginRight(1)
+
+	unselectedActionStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
 )
 
 type item string
 
 func (i item) FilterValue() string { return string(i) }
 func (i item) Title() string       { return string(i) }
-func (i item) Description() string { return "Fetch issues for this project" }
+func (i item) Description() string {
+	if i == "+ Add New Project" {
+		return "Add a new project key"
+	}
+	return "Fetch issues for this project"
+}
 
 type sessionState int
 
@@ -187,6 +207,7 @@ const (
 	stateCodePeriod
 	stateFetching
 	stateDone
+	statePrompt
 	stateError
 )
 
@@ -352,10 +373,15 @@ func initialModel() model {
 	SONAR_URL = config.SonarURL
 	availableSoftwareQualities = defaultConfig.SoftwareQualities
 
+	if token == "" {
+		token = config.Token
+	}
+
 	availableProjects = []list.Item{}
 	for _, p := range config.Projects {
 		availableProjects = append(availableProjects, item(p))
 	}
+	availableProjects = append(availableProjects, item("+ Add New Project"))
 
 	state := stateProject
 	if config.SonarURL == "" {
@@ -490,28 +516,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyEnter {
 				m.token = m.tokenInput.Value()
 				if strings.TrimSpace(m.token) != "" {
+					m.config.Token = m.token
+					saveConfig(m.config)
 					m.state = stateProject
 				}
 				return m, nil
 			}
 
-		case stateProject:
-			if msg.Type == tea.KeyEnter {
-				if i, ok := m.projectList.SelectedItem().(item); ok {
-					m.projectKey = string(i)
+	case stateProject:
+		if msg.Type == tea.KeyEnter {
+			if i, ok := m.projectList.SelectedItem().(item); ok {
+				if i == "+ Add New Project" {
+					m.state = stateNewProject
+					return m, nil
+				}
+				m.projectKey = string(i)
 
-					for i, sq := range availableSoftwareQualities {
-						for _, configSQ := range m.config.SoftwareQualities {
-							if sq == configSQ {
-								m.selectedQualities[i] = struct{}{}
-								break
-							}
+				for i, sq := range availableSoftwareQualities {
+					for _, configSQ := range m.config.SoftwareQualities {
+						if sq == configSQ {
+							m.selectedQualities[i] = struct{}{}
+							break
 						}
 					}
-					m.state = stateQualities
 				}
-				return m, nil
+				m.state = stateQualities
 			}
+			return m, nil
+		}
 
 		case stateQualities:
 			switch msg.String() {
@@ -591,7 +623,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.issues = msg.issues
 			m.buildSummaryTable()
 			m.savedFile = exportToCSV(m.issues, m.projectKey)
-			m.state = stateDone
+			m.state = statePrompt
 			return m, nil
 		case spinner.TickMsg:
 			m.spinner, cmd = m.spinner.Update(msg)
@@ -601,6 +633,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stateDone:
 		m.summaryTable, cmd = m.summaryTable.Update(msg)
 		cmds = append(cmds, cmd)
+
+	case statePrompt:
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			if msg.Type == tea.KeyEnter || msg.String() == "y" || msg.String() == "Y" {
+				m.projectKey = ""
+				m.softwareQualities = []string{}
+				m.selectedQualities = make(map[int]struct{})
+				m.issues = nil
+				m.qualitiesCursor = 0
+				m.codePeriodCursor = 0
+				m.isNewCodePeriod = true
+				m.savedFile = ""
+				m.state = stateProject
+				return m, nil
+			}
+			if msg.String() == "n" || msg.String() == "N" || msg.String() == "q" {
+				return m, tea.Quit
+			}
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -749,7 +801,7 @@ func (m model) View() string {
 	case stateToken:
 		b.WriteString(subtitleStyle.Render("Authentication Required"))
 		b.WriteString("\n")
-		b.WriteString(subtextStyle.Render("USER_TOKEN not found in .env file."))
+		b.WriteString(subtextStyle.Render("Token not found in .env or sonarsweep.json."))
 		b.WriteString("\n\n")
 		b.WriteString(m.tokenInput.View())
 		b.WriteString("\n")
@@ -842,22 +894,41 @@ func (m model) View() string {
 	case stateDone:
 		b.WriteString(subtitleStyle.Render(fmt.Sprintf("Summary for %s", m.projectKey)))
 		b.WriteString("\n")
-
-		// Ensure qualities are shown
 		b.WriteString(subtextStyle.Render(fmt.Sprintf("Qualities: %s", strings.Join(m.softwareQualities, ", "))))
 		b.WriteString("\n\n")
-
 		b.WriteString(m.summaryTable.View())
 		b.WriteString("\n\n")
-
 		if m.savedFile != "" {
-			b.WriteString(successStyle.Render(fmt.Sprintf("✔ Export complete! Data saved to: %s", m.savedFile)))
+			b.WriteString(successStyle.Render(fmt.Sprintf("Export complete! Data saved to: %s", m.savedFile)))
 		} else {
 			b.WriteString(errorStyle.Render("Failed to save the output file."))
 		}
 
+	case statePrompt:
+		b.WriteString(titleStyle.Render("Export Successful!"))
 		b.WriteString("\n\n")
-		b.WriteString(helpStyle.Render("Press q or Enter to quit"))
+		if m.savedFile != "" {
+			b.WriteString(successStyle.Render(fmt.Sprintf("✔  Data saved to:\n    %s", m.savedFile)))
+		} else {
+			b.WriteString(errorStyle.Render("✘  Failed to save the output file."))
+		}
+		b.WriteString("\n\n")
+		b.WriteString(promptStyle.Render("What would you like to do next?"))
+		b.WriteString("\n\n")
+		b.WriteString("  ")
+		b.WriteString(selectedActionStyle.Render("[ Y ]  Export another project"))
+		b.WriteString("\n")
+		b.WriteString("  ")
+		b.WriteString(unselectedActionStyle.Render("[ N ]  Exit SonarSweep"))
+		b.WriteString("\n\n")
+		b.WriteString(subtextStyle.Render("Press Enter to continue or q to exit"))
+	}
+	if m.state == stateError {
+		b.WriteString(errorStyle.Render("Error occurred"))
+		b.WriteString("\n\n")
+		b.WriteString(fmt.Sprintf("%v", m.fetchErr))
+		b.WriteString("\n\n")
+		b.WriteString(helpStyle.Render("Press q to quit."))
 	}
 
 	return appStyle.Render(b.String())
@@ -977,9 +1048,15 @@ func main() {
 	config := loadConfig()
 	SONAR_URL = config.SonarURL
 	availableSoftwareQualities = defaultConfig.SoftwareQualities
+
+	if token == "" {
+		token = config.Token
+	}
+
 	for _, p := range config.Projects {
 		availableProjects = append(availableProjects, item(p))
 	}
+	availableProjects = append(availableProjects, item("+ Add New Project"))
 
 	state := stateProject
 	if config.SonarURL == "" {
@@ -1039,6 +1116,7 @@ func main() {
 		newProjectInput:   uiProj,
 		projectList:       pl,
 		selectedQualities: make(map[int]struct{}),
+		isNewCodePeriod:   true,
 		spinner:           s,
 	}
 
