@@ -32,7 +32,7 @@ Thumbs.db
 *~
 
 # Go
-go.sum
+# go.sum
 
 # Node (if any JS tooling is added later)
 node_modules/

@@ -125,7 +125,7 @@ func initialModel() model {
 	availableSoftwareQualities = defaultConfig.SoftwareQualities
 
 	if token == "" {
-		token = config.Token
+		token, _ = GetToken()
 	}
 
 	availableProjects = []list.Item{}
@@ -297,9 +297,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyEnter {
 				m.token = m.tokenInput.Value()
 				if strings.TrimSpace(m.token) != "" {
-					m.config.Token = m.token
-					if err := saveConfig(m.config); err != nil {
-						m.fetchErr = fmt.Errorf("failed to save config: %w", err)
+					if err := StoreToken(m.token); err != nil {
+						m.fetchErr = fmt.Errorf("failed to store token: %w", err)
 						m.state = stateError
 						return m, nil
 					}

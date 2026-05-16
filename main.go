@@ -170,7 +170,7 @@ func main() {
 
 		token := os.Getenv("USER_TOKEN")
 		if token == "" {
-			token = cfg.Token
+			token, _ = GetToken()
 		}
 		if token == "" {
 			if !quiet {

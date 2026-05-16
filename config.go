@@ -13,7 +13,6 @@ type Config struct {
 	SonarURL          string   `json:"sonarqube_url"`
 	Projects          []string `json:"projects"`
 	SoftwareQualities []string `json:"software_qualities"`
-	Token             string   `json:"token,omitempty"`
 }
 
 var defaultConfig = Config{
