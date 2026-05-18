@@ -44,8 +44,7 @@ CONFIGURATION:
   Configuration is stored in '~/.config/sonarsweep/config.json' (fallback: 'sonarsweep.json'). You can edit this file
   directly or use the --add-project flag to add projects.
 
-  The token (USER_TOKEN) must be stored in a .env file, saved in 
-  the config file, or entered securely in the TUI prompt.
+  The token (USER_TOKEN) is managed securely via your operating system's native keychain. It can also be provided via a .env file or entered securely in the TUI prompt.
 
   Default config location: ~/.config/sonarsweep/config.json
   Override with: --config /path/to/config.json

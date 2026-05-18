@@ -19,7 +19,7 @@
 - **Clean CSV Export** — Outputs structured CSV files organized by project folder
 - **Persistent Configuration** — JSON-based config saves your URL and projects between runs
 - **CLI Flags** — Upcoming automation support for CI/CD pipelines with `--dry-run`, `--export`, `--quiet` (See [Next Release](next_release.md))
-- **Secure Token Handling** — Token stored in `.env`, never in config files
+- **Secure Token Handling** — Token is securely stored in your operating system's native keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service) or via `.env`, never in plain-text config files.
 
 ---
 
@@ -55,7 +55,7 @@ go build -o sonarsweep main.go
 
 ### Step 1: Set up your SonarQube Token
 
-Create a User Token in Sonarqube and hold it when launching the CLI
+Create a User Token in SonarQube. SonarSweep will ask for this token on first run and store it securely in your operating system's native keychain.
 
 > **Note:** Your token must have access to the SonarQube projects you want to fetch. Generate one from SonarQube → My Account → Security.
 
@@ -73,7 +73,7 @@ From the build
 ./sonarsweep
 ```
 
-On the first run, SonarSweep will ask for your Token, SonarQube URL and Project Key. After that, it remembers your settings.
+On the first run, SonarSweep will ask for your Token, SonarQube URL and Project Key. After that, it remembers your settings (with your token safely secured in the OS keychain).
 
 ### How to get project key
 
