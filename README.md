@@ -51,6 +51,23 @@ go build -o sonarsweep main.go
 
 ---
 
+## Uninstall
+
+### Quick
+```bash
+./uninstall.sh
+```
+
+### Manual
+```bash
+rm -rf ~/.sonarsweep
+```
+Then remove PATH line from your shell config (`~/.zshrc`, `~/.bashrc`, etc.):
+- `export PATH="$HOME/.sonarsweep/bin:$PATH"` + `# sonarsweep` comment
+- Or `fish_add_path "$HOME/.sonarsweep/bin"` (fish)
+
+---
+
 ## Quick Start
 
 ### Step 1: Set up your SonarQube Token
