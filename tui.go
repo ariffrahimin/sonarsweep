@@ -18,6 +18,7 @@ import (
 var (
 	availableProjects          []list.Item
 	availableSoftwareQualities []string
+	availableSeverities        []string
 )
 
 type item string
@@ -42,6 +43,7 @@ const (
 	stateToken
 	stateProject
 	stateQualities
+	stateSeverities
 	stateCodePeriod
 	stateFetching
 	stateDone
@@ -55,9 +57,9 @@ type issuesFetchedMsg struct {
 	err    error
 }
 
-func fetchIssuesCmd(projectKey, token string, softwareQualities []string, isNewCodePeriod bool) tea.Cmd {
+func fetchIssuesCmd(projectKey, token string, softwareQualities, severities []string, isNewCodePeriod bool) tea.Cmd {
 	return func() tea.Msg {
-		issues, err := fetchIssues(projectKey, token, softwareQualities, isNewCodePeriod)
+		issues, err := fetchIssues(projectKey, token, softwareQualities, severities, isNewCodePeriod)
 		if err != nil {
 			return issuesFetchedMsg{err: err}
 		}
@@ -99,6 +101,11 @@ type model struct {
 	selectedQualities map[int]struct{}
 	softwareQualities []string
 
+	// Severities
+	severitiesCursor   int
+	selectedSeverities map[int]struct{}
+	severities         []string
+
 	// Code Period
 	codePeriodCursor int
 	isNewCodePeriod  bool
@@ -123,6 +130,7 @@ func initialModel() model {
 	config := loadConfig()
 	SONAR_URL = config.SonarURL
 	availableSoftwareQualities = defaultConfig.SoftwareQualities
+	availableSeverities = defaultConfig.Severities
 
 	if token == "" {
 		token, _ = GetToken()
@@ -188,16 +196,18 @@ func initialModel() model {
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
 	return model{
-		state:             state,
-		config:            config,
-		token:             token,
-		tokenInput:        ti,
-		urlInput:          uiURL,
-		newProjectInput:   uiProj,
-		projectList:       pl,
-		selectedQualities: make(map[int]struct{}),
-		isNewCodePeriod:   true,
-		spinner:           s,
+		state:              state,
+		config:             config,
+		token:              token,
+		tokenInput:         ti,
+		urlInput:           uiURL,
+		newProjectInput:    uiProj,
+		projectList:        pl,
+		selectedQualities:  make(map[int]struct{}),
+		selectedSeverities: make(map[int]struct{}),
+		severities:         config.Severities,
+		isNewCodePeriod:    true,
+		spinner:            s,
 	}
 }
 
@@ -356,6 +366,50 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					for k := range m.selectedQualities {
 						m.softwareQualities = append(m.softwareQualities, availableSoftwareQualities[k])
 					}
+
+					for i, sq := range availableSeverities {
+						for _, configSQ := range m.config.Severities {
+							if sq == configSQ {
+								m.selectedSeverities[i] = struct{}{}
+								break
+							}
+						}
+					}
+
+					m.state = stateSeverities
+
+					return m, nil
+				}
+			}
+
+		case stateSeverities:
+			switch msg.String() {
+			case "up", "k":
+				if m.severitiesCursor > 0 {
+					m.severitiesCursor--
+				}
+			case "down", "j":
+				if m.severitiesCursor < len(availableSeverities)-1 {
+					m.severitiesCursor++
+				}
+			case " ":
+				_, ok := m.selectedSeverities[m.severitiesCursor]
+				if ok {
+					delete(m.selectedSeverities, m.severitiesCursor)
+				} else {
+					m.selectedSeverities[m.severitiesCursor] = struct{}{}
+				}
+			case "enter":
+				if len(m.selectedSeverities) > 0 {
+					for k := range m.selectedSeverities {
+						m.severities = append(m.severities, availableSeverities[k])
+					}
+					m.config.Severities = m.severities
+					if err := saveConfig(m.config); err != nil {
+						m.fetchErr = fmt.Errorf("failed to save config: %w", err)
+						m.state = stateError
+						return m, nil
+					}
 					m.state = stateCodePeriod
 					return m, nil
 				}
@@ -374,7 +428,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				m.isNewCodePeriod = m.codePeriodCursor == 0
 				m.state = stateFetching
-				return m, tea.Batch(m.spinner.Tick, fetchIssuesCmd(m.projectKey, m.token, m.softwareQualities, m.isNewCodePeriod))
+				return m, tea.Batch(m.spinner.Tick, fetchIssuesCmd(m.projectKey, m.token, m.softwareQualities, m.severities, m.isNewCodePeriod))
 			}
 
 		case stateRemoveProject:
@@ -486,8 +540,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.projectKey = ""
 					m.softwareQualities = []string{}
 					m.selectedQualities = make(map[int]struct{})
+					m.severities = []string{}
+					m.selectedSeverities = make(map[int]struct{})
 					m.issues = nil
 					m.qualitiesCursor = 0
+					m.severitiesCursor = 0
 					m.codePeriodCursor = 0
 					m.isNewCodePeriod = true
 					m.savedFile = ""
@@ -637,6 +694,46 @@ func (m model) View() string {
 
 		if len(m.selectedQualities) == 0 {
 			b.WriteString(errorStyle.Render("\n(You must select at least one quality)"))
+		}
+
+		b.WriteString("\n")
+		b.WriteString(helpStyle.Render("↑/↓: Navigate • Space: Toggle • Enter: Confirm • Esc: Quit"))
+
+	case stateSeverities:
+		b.WriteString(subtitleStyle.Render("Select Impact Severities"))
+		b.WriteString("\n")
+		b.WriteString(subtextStyle.Render("Space to toggle, Enter to confirm"))
+		b.WriteString("\n\n")
+
+		for i, choice := range availableSeverities {
+			cursor := "  "
+			if m.severitiesCursor == i {
+				cursor = cursorStyle.Render("> ")
+			}
+
+			checked := " "
+			if _, ok := m.selectedSeverities[i]; ok {
+				checked = "•"
+			}
+
+			box := ""
+			if _, ok := m.selectedSeverities[i]; ok {
+				box = checkboxSelectedStyle.Render(fmt.Sprintf("[%s]", checked))
+			} else {
+				box = checkboxUnselectedStyle.Render(fmt.Sprintf("[%s]", checked))
+			}
+
+			text := choice
+			if m.severitiesCursor == i {
+				text = highlightStyle.Render(text)
+			}
+
+			line := fmt.Sprintf("%s%s %s\n", cursor, box, text)
+			b.WriteString(line)
+		}
+
+		if len(m.selectedSeverities) == 0 {
+			b.WriteString(errorStyle.Render("\n(You must select at least one severity)"))
 		}
 
 		b.WriteString("\n")

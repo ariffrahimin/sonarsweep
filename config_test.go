@@ -158,3 +158,143 @@ func TestLoadConfig_StripsTrailingSlash(t *testing.T) {
 		t.Errorf("Expected trailing slash to be stripped, got %s", cfg.SonarURL)
 	}
 }
+
+func TestDefaultConfig_HasCorrectSeverities(t *testing.T) {
+	if len(defaultConfig.Severities) != 4 {
+		t.Errorf("Expected 4 default severities, got %d", len(defaultConfig.Severities))
+	}
+
+	expected := []string{"BLOCKER", "HIGH", "MEDIUM", "LOW"}
+	for i, s := range expected {
+		if defaultConfig.Severities[i] != s {
+			t.Errorf("Expected Severity[%d] to be %s, got %s", i, s, defaultConfig.Severities[i])
+		}
+	}
+}
+
+func TestLoadConfig_ValidSeverities(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "sonarsweep.json")
+
+	testConfig := Config{
+		SonarURL:          "http://test.com:9000",
+		Projects:          []string{"test-project"},
+		SoftwareQualities: []string{"RELIABILITY"},
+		Severities:        []string{"HIGH", "LOW"},
+	}
+
+	data, _ := json.Marshal(testConfig)
+	os.WriteFile(tmpFile, data, 0644)
+
+	originalConfigPath := configPath
+	configPath = tmpFile
+	defer func() { configPath = originalConfigPath }()
+
+	cfg := loadConfig()
+
+	if len(cfg.Severities) != 2 {
+		t.Errorf("Expected 2 severities, got %d", len(cfg.Severities))
+	}
+	if cfg.Severities[0] != "HIGH" || cfg.Severities[1] != "LOW" {
+		t.Errorf("Expected severities [HIGH, LOW], got %v", cfg.Severities)
+	}
+}
+
+func TestLoadConfig_InvalidSeverities_FallsBackToDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "sonarsweep.json")
+
+	jsonContent := `{
+		"sonarqube_url": "http://test.com:9000",
+		"severities": ["INVALID", "BAD"]
+	}`
+	os.WriteFile(tmpFile, []byte(jsonContent), 0644)
+
+	originalConfigPath := configPath
+	configPath = tmpFile
+	defer func() { configPath = originalConfigPath }()
+
+	cfg := loadConfig()
+
+	if len(cfg.Severities) != 4 {
+		t.Errorf("Expected fallback to 4 default severities, got %d", len(cfg.Severities))
+	}
+}
+
+func TestLoadConfig_DuplicateSeverities_Removed(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "sonarsweep.json")
+
+	jsonContent := `{
+		"sonarqube_url": "http://test.com:9000",
+		"severities": ["LOW", "HIGH", "LOW", "MEDIUM", "HIGH"]
+	}`
+	os.WriteFile(tmpFile, []byte(jsonContent), 0644)
+
+	originalConfigPath := configPath
+	configPath = tmpFile
+	defer func() { configPath = originalConfigPath }()
+
+	cfg := loadConfig()
+
+	if len(cfg.Severities) != 3 {
+		t.Errorf("Expected 3 unique severities, got %d", len(cfg.Severities))
+	}
+
+	seen := map[string]bool{}
+	for _, s := range cfg.Severities {
+		if seen[s] {
+			t.Errorf("Duplicate severity found: %s", s)
+		}
+		seen[s] = true
+	}
+}
+
+func TestLoadConfig_EmptySeverities_FallsBackToDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "sonarsweep.json")
+
+	jsonContent := `{
+		"sonarqube_url": "http://test.com:9000",
+		"severities": []
+	}`
+	os.WriteFile(tmpFile, []byte(jsonContent), 0644)
+
+	originalConfigPath := configPath
+	configPath = tmpFile
+	defer func() { configPath = originalConfigPath }()
+
+	cfg := loadConfig()
+
+	if len(cfg.Severities) != 4 {
+		t.Errorf("Expected 4 default severities for empty, got %d", len(cfg.Severities))
+	}
+}
+
+func TestSaveConfig_AndLoadConfig_RoundTrip_WithSeverities(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "sonarsweep.json")
+
+	originalConfigPath := configPath
+	configPath = tmpFile
+	defer func() { configPath = originalConfigPath }()
+
+	original := Config{
+		SonarURL:          "http://roundtrip.test:9000",
+		Projects:          []string{"project-a"},
+		SoftwareQualities: []string{"SECURITY"},
+		Severities:        []string{"BLOCKER", "HIGH"},
+	}
+
+	_ = saveConfig(original)
+	loaded := loadConfig()
+
+	if len(loaded.Severities) != len(original.Severities) {
+		t.Errorf("Severities count mismatch: got %d, want %d", len(loaded.Severities), len(original.Severities))
+	}
+	for i, s := range original.Severities {
+		if loaded.Severities[i] != s {
+			t.Errorf("Severity[%d] mismatch: got %s, want %s", i, loaded.Severities[i], s)
+		}
+	}
+}

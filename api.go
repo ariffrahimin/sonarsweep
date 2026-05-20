@@ -60,7 +60,7 @@ func isValidURL(s string) bool {
 	return true
 }
 
-func fetchIssues(projectKey, token string, softwareQualities []string, isNewCodePeriod bool) ([]Issue, error) {
+func fetchIssues(projectKey, token string, softwareQualities, severities []string, isNewCodePeriod bool) ([]Issue, error) {
 	var allIssues []Issue
 	client := &http.Client{Timeout: 15 * time.Second}
 
@@ -76,7 +76,10 @@ func fetchIssues(projectKey, token string, softwareQualities []string, isNewCode
 		q := req.URL.Query()
 		q.Add("componentKeys", projectKey)
 		q.Add("statuses", "OPEN,CONFIRMED")
-		q.Add("impactSeverities", "BLOCKER,HIGH,MEDIUM,LOW")
+	if len(severities) == 0 {
+		severities = []string{"BLOCKER", "HIGH", "MEDIUM", "LOW"}
+	}
+	q.Add("impactSeverities", strings.Join(severities, ","))
 		q.Add("impactSoftwareQualities", strings.Join(softwareQualities, ","))
 		if isNewCodePeriod {
 			q.Add("inNewCodePeriod", "true")
