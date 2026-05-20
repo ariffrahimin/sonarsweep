@@ -53,7 +53,12 @@ go build -o sonarsweep main.go
 
 ## Uninstall
 
-### Quick
+### Quick (curl)
+```bash
+curl -sSL https://raw.githubusercontent.com/ariffrahimin/sonarsweep/main/uninstall.sh | bash
+```
+
+### Quick (local)
 ```bash
 ./uninstall.sh
 ```
