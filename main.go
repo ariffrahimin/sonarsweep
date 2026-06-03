@@ -55,6 +55,9 @@ CONFIGURATION:
 }
 
 func main() {
+	initDebug()
+	defer closeDebug()
+
 	var (
 		help         bool
 		version      bool
