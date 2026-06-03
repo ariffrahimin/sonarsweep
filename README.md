@@ -139,6 +139,7 @@ SonarSweep supports full command-line operation for automation and scripting:
 | `--export <path>` | Override CSV export path | `sonarsweep --export /tmp/output.csv` |
 | `--dry-run` | Fetch issues without saving | `sonarsweep --dry-run` |
 | `-q`, `--quiet` | Headless mode (no TUI) | `sonarsweep --quiet` |
+| `-s`, `--severity` | Filter by severities | `sonarsweep --severity LOW` or `sonarsweep -s LOW,MEDIUM` |
 
 ---
 
@@ -158,6 +159,12 @@ SonarSweep stores configuration in `~/.config/sonarsweep/config.json`:
     "RELIABILITY",
     "SECURITY",
     "MAINTAINABILITY"
+  ],
+  "severities": [
+    "BLOCKER",
+    "HIGH",
+    "MEDIUM",
+    "LOW"
   ]
 }
 ```

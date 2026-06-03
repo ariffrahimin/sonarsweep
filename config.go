@@ -13,6 +13,7 @@ type Config struct {
 	SonarURL          string   `json:"sonarqube_url"`
 	Projects          []string `json:"projects"`
 	SoftwareQualities []string `json:"software_qualities"`
+	Severities        []string `json:"severities"`
 }
 
 var defaultConfig = Config{
@@ -22,6 +23,12 @@ var defaultConfig = Config{
 		"RELIABILITY",
 		"SECURITY",
 		"MAINTAINABILITY",
+	},
+	Severities: []string{
+		"BLOCKER",
+		"HIGH",
+		"MEDIUM",
+		"LOW",
 	},
 }
 
@@ -55,6 +62,26 @@ func loadConfig() Config {
 	config.SonarURL = strings.TrimRight(config.SonarURL, "/")
 	if len(config.SoftwareQualities) == 0 {
 		config.SoftwareQualities = defaultConfig.SoftwareQualities
+	}
+	if len(config.Severities) == 0 {
+		config.Severities = defaultConfig.Severities
+	} else {
+		validSeverities := []string{}
+		seen := map[string]bool{}
+		for _, s := range config.Severities {
+			for _, valid := range defaultConfig.Severities {
+				if s == valid && !seen[s] {
+					validSeverities = append(validSeverities, s)
+					seen[s] = true
+					break
+				}
+			}
+		}
+		if len(validSeverities) == 0 {
+			config.Severities = defaultConfig.Severities
+		} else {
+			config.Severities = validSeverities
+		}
 	}
 	return config
 }

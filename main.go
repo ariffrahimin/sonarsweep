@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
@@ -29,6 +30,7 @@ FLAGS:
   --export <path>      Override the CSV export path
   --dry-run            Fetch issues but skip CSV export
   -q, --quiet          Run in headless mode (no TUI)
+  -s, --severity <l>   Filter by severities (BLOCKER,HIGH,MEDIUM,LOW)
 
 EXAMPLES:
   sonarsweep --help
@@ -63,6 +65,7 @@ func main() {
 		exportPath   string
 		dryRun       bool
 		quiet        bool
+		severities   string
 	)
 
 	flag.BoolVar(&help, "help", false, "Show this help message and exit")
@@ -79,6 +82,8 @@ func main() {
 	flag.BoolVar(&quiet, "q", false, "Run in headless mode (no TUI) (shorthand)")
 	flag.StringVar(&configPath, "config", "", "Use a different configuration file")
 	flag.StringVar(&configPath, "c", "", "Use a different configuration file (shorthand)")
+	flag.StringVar(&severities, "severity", "", "Filter by impact severities (comma-separated: BLOCKER,HIGH,MEDIUM,LOW)")
+	flag.StringVar(&severities, "s", "", "Filter by impact severities (comma-separated: BLOCKER,HIGH,MEDIUM,LOW) (shorthand)")
 
 	flag.Usage = printHelp
 	flag.Parse()
@@ -193,11 +198,16 @@ func main() {
 			cliExportPath = exportPath
 		}
 
+		severitiesToUse := cfg.Severities
+		if severities != "" {
+			severitiesToUse = strings.Split(severities, ",")
+		}
+
 		if !quiet {
 			fmt.Printf("Fetching issues for project: %s\n", projectKey)
 		}
 
-		issues, err := fetchIssues(projectKey, token, cfg.SoftwareQualities, true)
+		issues, err := fetchIssues(projectKey, token, cfg.SoftwareQualities, severitiesToUse, true)
 		if err != nil {
 			if !quiet {
 				fmt.Fprintf(os.Stderr, "Error fetching issues: %v\n", err)
