@@ -135,3 +135,29 @@ func saveConfig(config Config) error {
 	}
 	return os.WriteFile(path, data, 0600)
 }
+
+func detectSonarProperties(dir string) (projectKey, hostURL string) {
+	data, err := os.ReadFile(filepath.Join(dir, "sonar-project.properties"))
+	if err != nil {
+		return "", ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+		switch key {
+		case "sonar.projectKey":
+			projectKey = val
+		case "sonar.host.url":
+			hostURL = strings.TrimRight(val, "/")
+		}
+	}
+	return projectKey, hostURL
+}

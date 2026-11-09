@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -148,6 +149,43 @@ func TestFetchIssuesWithOptions_PassesBranchAndPullRequestAndReportsTruncation(t
 	}
 	if !res.Truncated || res.Total != 12500 {
 		t.Errorf("expected Truncated=true and Total=12500, got Truncated=%v Total=%d", res.Truncated, res.Total)
+	}
+}
+
+func TestFetchRuleDetails_ParsesDescriptionSectionsAndLegacyDesc(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/rules/show" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		key := r.URL.Query().Get("key")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"rule": {
+				"key": "` + key + `",
+				"name": "Functions should not have too many parameters",
+				"severity": "MAJOR",
+				"type": "CODE_SMELL",
+				"descriptionSections": [
+					{"key": "root_cause", "content": "<p>Too many parameters make functions hard to read.</p>"},
+					{"key": "how_to_fix", "content": "<p>Group related parameters into a struct.</p>"}
+				]
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	detail, err := fetchRuleDetails(srv.URL, "token-123", "go:S107")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if detail.Key != "go:S107" || detail.Name != "Functions should not have too many parameters" {
+		t.Errorf("unexpected rule metadata: %+v", detail)
+	}
+	if !strings.Contains(detail.Description, "Too many parameters make functions hard to read.") ||
+		!strings.Contains(detail.Description, "Group related parameters into a struct.") ||
+		strings.Contains(detail.Description, "<p>") {
+		t.Errorf("expected HTML-stripped description with both sections, got: %q", detail.Description)
 	}
 }
 

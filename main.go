@@ -39,6 +39,9 @@ FLAGS:
   -b, --branch <name>       Filter issues by SonarQube branch
   --pr <id>                 Filter issues by SonarQube pull request ID
   --overall                 Fetch issues from overall code (default: new code only)
+  --json                    Output issues or rule details as JSON to stdout (AI/agent mode)
+  --explain-rule <key>      Fetch and display SonarQube rule description and remediation
+  --mcp                     Run as a Model Context Protocol (MCP) stdio server for AI agents
 
 EXAMPLES:
   sonarsweep --help
@@ -85,6 +88,9 @@ func main() {
 		branch        string
 		pullRequest   string
 		overall       bool
+		jsonOutput    bool
+		explainRule   string
+		mcpMode       bool
 	)
 
 	flag.BoolVar(&help, "help", false, "Show this help message and exit")
@@ -113,9 +119,20 @@ func main() {
 	flag.StringVar(&branch, "b", "", "Filter issues by SonarQube branch (shorthand)")
 	flag.StringVar(&pullRequest, "pr", "", "Filter issues by SonarQube pull request ID")
 	flag.BoolVar(&overall, "overall", false, "Fetch issues from overall code instead of new code period")
+	flag.BoolVar(&jsonOutput, "json", false, "Output issues or rule details as JSON to stdout")
+	flag.StringVar(&explainRule, "explain-rule", "", "Fetch and display SonarQube rule description and remediation")
+	flag.BoolVar(&mcpMode, "mcp", false, "Run as a Model Context Protocol (MCP) stdio server")
 
 	flag.Usage = printHelp
 	flag.Parse()
+
+	if mcpMode {
+		if err := serveMCP(os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	if help {
 		printHelp()
@@ -157,7 +174,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	isHeadless := quiet || dryRun || exportPath != "" || project != "" || branch != "" || pullRequest != ""
+	isHeadless := quiet || dryRun || exportPath != "" || project != "" || branch != "" || pullRequest != "" || jsonOutput || explainRule != ""
 
 	if setURL != "" {
 		trimmedURL := strings.TrimRight(strings.TrimSpace(setURL), "/")
@@ -249,6 +266,11 @@ func main() {
 	if isHeadless {
 		godotenv.Load()
 		cfg := loadConfig()
+		cwdProj, cwdHost := detectSonarProperties(".")
+
+		if cfg.SonarURL == "" && cwdHost != "" {
+			cfg.SonarURL = cwdHost
+		}
 
 		if cfg.SonarURL == "" {
 			if !quiet {
@@ -269,14 +291,38 @@ func main() {
 			os.Exit(1)
 		}
 
+		if explainRule != "" {
+			detail, err := fetchRuleDetails(cfg.SonarURL, token, strings.TrimSpace(explainRule))
+			if err != nil {
+				if !quiet {
+					fmt.Fprintf(os.Stderr, "Error fetching rule: %v\n", err)
+				}
+				os.Exit(1)
+			}
+			if jsonOutput {
+				raw, _ := json.MarshalIndent(detail, "", "  ")
+				fmt.Println(string(raw))
+			} else {
+				fmt.Printf("Rule: %s — %s\n", detail.Key, detail.Name)
+				if detail.Type != "" || detail.Severity != "" {
+					fmt.Printf("Type: %s | Severity: %s\n", detail.Type, detail.Severity)
+				}
+				fmt.Printf("\n%s\n", detail.Description)
+			}
+			os.Exit(0)
+		}
+
 		projectKey := project
 		if projectKey == "" {
 			projectKey = addProject
 		}
 		if projectKey == "" {
+			projectKey = cwdProj
+		}
+		if projectKey == "" {
 			if len(cfg.Projects) == 0 {
 				if !quiet {
-					fmt.Fprintln(os.Stderr, "Error: No projects configured. Use --project <key> or --add-project <key> to specify one.")
+					fmt.Fprintln(os.Stderr, "Error: No projects configured. Use --project <key>, --add-project <key>, or sonar-project.properties.")
 				}
 				os.Exit(1)
 			}
@@ -297,7 +343,7 @@ func main() {
 			qualitiesToUse = parseSoftwareQualities(qualities)
 		}
 
-		if !quiet {
+		if !quiet && !jsonOutput {
 			fmt.Printf("Fetching issues for project: %s\n", projectKey)
 		}
 
@@ -318,8 +364,18 @@ func main() {
 			os.Exit(1)
 		}
 		issues := res.Issues
-		if res.Truncated && !quiet {
+		if res.Truncated && !quiet && !jsonOutput {
 			fmt.Fprintf(os.Stderr, "Warning: Export capped at SonarQube's 10,000 issue limit (out of %d total).\n", res.Total)
+		}
+
+		if jsonOutput {
+			raw, err := formatIssuesJSON(res, projectKey)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error formatting JSON: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println(string(raw))
+			os.Exit(0)
 		}
 
 		if dryRun {

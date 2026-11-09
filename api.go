@@ -47,6 +47,117 @@ type FetchResult struct {
 	Truncated bool
 }
 
+type RuleDetail struct {
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Severity    string `json:"severity,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Description string `json:"description"`
+}
+
+func stripHTML(input string) string {
+	var b strings.Builder
+	inTag := false
+	for _, r := range input {
+		switch r {
+		case '<':
+			inTag = true
+		case '>':
+			if inTag {
+				inTag = false
+			}
+		default:
+			if !inTag {
+				b.WriteRune(r)
+			}
+		}
+	}
+	replacer := strings.NewReplacer(
+		"&lt;", "<",
+		"&gt;", ">",
+		"&amp;", "&",
+		"&quot;", `"`,
+		"&#39;", "'",
+		"&nbsp;", " ",
+	)
+	return strings.TrimSpace(replacer.Replace(b.String()))
+}
+
+func fetchRuleDetails(baseURL, token, ruleKey string) (RuleDetail, error) {
+	if baseURL == "" {
+		baseURL = SONAR_URL
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/rules/show", strings.TrimRight(baseURL, "/")), nil)
+	if err != nil {
+		return RuleDetail{}, err
+	}
+	q := req.URL.Query()
+	q.Add("key", ruleKey)
+	req.URL.RawQuery = q.Encode()
+	req.SetBasicAuth(token, "")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return RuleDetail{}, fmt.Errorf("network or connection issue: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var payload struct {
+		Rule struct {
+			Key                 string `json:"key"`
+			Name                string `json:"name"`
+			Severity            string `json:"severity"`
+			Type                string `json:"type"`
+			MdDesc              string `json:"mdDesc"`
+			HtmlDesc            string `json:"htmlDesc"`
+			DescriptionSections []struct {
+				Key     string `json:"key"`
+				Content string `json:"content"`
+			} `json:"descriptionSections"`
+		} `json:"rule"`
+		Errors []struct {
+			Msg string `json:"msg"`
+		} `json:"errors"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return RuleDetail{}, fmt.Errorf("failed to decode rule response: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		errMsg := resp.Status
+		if len(payload.Errors) > 0 {
+			errMsg = payload.Errors[0].Msg
+		}
+		return RuleDetail{}, fmt.Errorf("failed to fetch rule %q (Status Code: %d): %s", ruleKey, resp.StatusCode, errMsg)
+	}
+
+	var sections []string
+	for _, sec := range payload.Rule.DescriptionSections {
+		cleaned := stripHTML(sec.Content)
+		if cleaned != "" {
+			sections = append(sections, fmt.Sprintf("[%s]\n%s", sec.Key, cleaned))
+		}
+	}
+	desc := strings.Join(sections, "\n\n")
+	if desc == "" {
+		if payload.Rule.MdDesc != "" {
+			desc = stripHTML(payload.Rule.MdDesc)
+		} else {
+			desc = stripHTML(payload.Rule.HtmlDesc)
+		}
+	}
+
+	return RuleDetail{
+		Key:         payload.Rule.Key,
+		Name:        payload.Rule.Name,
+		Severity:    payload.Rule.Severity,
+		Type:        payload.Rule.Type,
+		Description: desc,
+	}, nil
+}
+
 type Paging struct {
 	Total int `json:"total"`
 }

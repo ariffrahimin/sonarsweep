@@ -368,5 +368,32 @@ func TestRemoveProjectFromSlice(t *testing.T) {
 	}
 }
 
+func TestDetectSonarProperties_ParsesProjectKeyAndHostURL(t *testing.T) {
+	tmpDir := t.TempDir()
+	propsContent := `
+# SonarQube configuration
+sonar.projectKey = "my-org_backend-api"
+sonar.projectName=Backend API
+sonar.host.url = https://sonar.internal.example.com/
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "sonar-project.properties"), []byte(propsContent), 0600); err != nil {
+		t.Fatalf("failed to write properties file: %v", err)
+	}
+
+	proj, host := detectSonarProperties(tmpDir)
+	if proj != "my-org_backend-api" {
+		t.Errorf("expected projectKey 'my-org_backend-api', got %q", proj)
+	}
+	if host != "https://sonar.internal.example.com" {
+		t.Errorf("expected hostURL 'https://sonar.internal.example.com', got %q", host)
+	}
+
+	emptyProj, emptyHost := detectSonarProperties(t.TempDir())
+	if emptyProj != "" || emptyHost != "" {
+		t.Errorf("expected empty strings when file does not exist, got proj=%q host=%q", emptyProj, emptyHost)
+	}
+}
+
+
 
 

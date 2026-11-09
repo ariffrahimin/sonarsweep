@@ -18,7 +18,8 @@
 - **Flexible Filtering** — Filter by impact severities (BLOCKER, HIGH, MEDIUM, LOW) and software qualities (RELIABILITY, SECURITY, MAINTAINABILITY)
 - **Clean CSV Export** — Outputs structured CSV files organized by project folder
 - **Persistent Configuration** — JSON-based config saves your URL and projects between runs
-- **CLI Flags** — Headless automation support for CI/CD pipelines with `--dry-run`, `--export`, `--quiet`, `--project`, and `--overall`
+- **CLI Flags** — Headless automation support for CI/CD pipelines with `--dry-run`, `--export`, `--quiet`, `--project`, `--branch`, `--pr`, `--overall`, and `--json`
+- **AI Agent & MCP Ready** — Built-in Model Context Protocol (`sonarsweep --mcp`) server, `--json` output, `--explain-rule`, `sonar-project.properties` auto-detection, and portable `SKILL.md` for Claude Code, OpenCode, Cursor, and Windsurf
 - **Secure Token Handling** — Token is securely stored in your operating system's native keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service) or via `.env`, never in plain-text config files.
 
 ---
@@ -148,6 +149,49 @@ SonarSweep supports full command-line operation for automation and scripting:
 | `-b`, `--branch <name>` | Filter issues by SonarQube branch | `sonarsweep -p my-project -b develop --dry-run` |
 | `--pr <id>` | Filter issues by pull request ID | `sonarsweep -p my-project --pr 42 --dry-run` |
 | `--overall` | Fetch overall code issues instead of new code only | `sonarsweep --dry-run --overall` |
+| `--json` | Output issues or rule details as JSON to stdout | `sonarsweep --json -s BLOCKER,HIGH` |
+| `--explain-rule <key>` | Fetch rule description & remediation instructions | `sonarsweep --explain-rule go:S100` |
+| `--mcp` | Run as a Model Context Protocol (MCP) stdio server | `sonarsweep --mcp` |
+
+---
+
+## AI Agents, Skill & MCP Integration
+
+SonarSweep lets AI coding agents (OpenCode, Claude Code, Cursor, Windsurf, GitHub Copilot) fetch and fix SonarQube issues **without needing `sonar-scanner` CLI** or exposing tokens in chat prompts.
+
+### Option 1: Install the Agent Skill (`skills/sonarsweep/SKILL.md`)
+
+```bash
+npx skills add ariffrahimin/sonarsweep
+```
+
+Or copy `skills/sonarsweep/SKILL.md` into `.agents/skills/sonarsweep/SKILL.md` (or `.claude/skills/sonarsweep/SKILL.md`).
+
+### Option 2: Connect the Built-in MCP Server (`sonarsweep --mcp`)
+
+Add `sonarsweep` to your MCP client configuration:
+
+**Claude Code:**
+```bash
+claude mcp add sonarsweep -- sonarsweep --mcp
+```
+
+**Cursor / Windsurf / Claude Desktop / OpenCode (`mcpServers`):**
+```json
+{
+  "mcpServers": {
+    "sonarsweep": {
+      "command": "sonarsweep",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+**Exposed MCP Tools:**
+- `sonarsweep_list_projects` — Lists configured projects and auto-detects `sonar.projectKey` from `sonar-project.properties`.
+- `sonarsweep_fetch_issues` — Returns structured JSON issues with repo-relative file paths, lines, impact severities, and software qualities.
+- `sonarsweep_explain_rule` — Fetches SonarQube's root-cause explanation and remediation guidance for any rule key.
 
 ---
 
