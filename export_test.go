@@ -58,3 +58,36 @@ func TestExportToCSV_CreatesFileAndHandlesErrors(t *testing.T) {
 		t.Errorf("Expected first column of data to be 'ISSUE-1', got %s", records[1][0])
 	}
 }
+
+func TestExportToCSV_SanitizesProjectKeyDirectoryName(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("USERPROFILE", tmpHome)
+
+	originalExportPath := cliExportPath
+	cliExportPath = ""
+	defer func() { cliExportPath = originalExportPath }()
+
+	issues := []Issue{
+		{
+			Key:       "ISSUE-2",
+			Rule:      "go:S100",
+			Severity:  "BLOCKER",
+			Component: "my-org:my/project:pkg/service.go",
+			Line:      25,
+			Message:   "Fix me",
+			Status:    "OPEN",
+		},
+	}
+
+	savedFile, err := exportToCSV(issues, "my-org:my/project")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	expectedDir := filepath.Join(tmpHome, "Downloads", "my-org_my_project")
+	if filepath.Dir(savedFile) != expectedDir {
+		t.Errorf("Expected output directory %s, got %s", expectedDir, filepath.Dir(savedFile))
+	}
+}
+

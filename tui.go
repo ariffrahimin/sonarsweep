@@ -46,7 +46,6 @@ const (
 	stateSeverities
 	stateCodePeriod
 	stateFetching
-	stateDone
 	statePrompt
 	stateRemoveProject
 	stateError
@@ -123,6 +122,19 @@ type model struct {
 	savedFile    string
 }
 
+func buildProjectListItems(projects []string) []list.Item {
+	items := make([]list.Item, 0, len(projects)+2)
+	for _, p := range projects {
+		items = append(items, item(p))
+	}
+	if len(projects) > 0 {
+		items = append(items, item("- Remove Project"), item("+ Add New Project"))
+	} else {
+		items = append(items, item("+ Add New Project"))
+	}
+	return items
+}
+
 func initialModel() model {
 	godotenv.Load()
 	token := os.Getenv("USER_TOKEN")
@@ -136,15 +148,7 @@ func initialModel() model {
 		token, _ = GetToken()
 	}
 
-	availableProjects = []list.Item{}
-	for _, p := range config.Projects {
-		availableProjects = append(availableProjects, item(p))
-	}
-	if len(config.Projects) > 0 {
-		availableProjects = append(availableProjects, item("- Remove Project"), item("+ Add New Project"))
-	} else {
-		availableProjects = append(availableProjects, item("+ Add New Project"))
-	}
+	availableProjects = buildProjectListItems(config.Projects)
 
 	state := stateProject
 	if config.SonarURL == "" {
@@ -234,7 +238,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
-			if m.state != stateDone && m.state != stateError {
+			if m.state != stateError {
 				return m, tea.Quit
 			}
 		}
@@ -280,6 +284,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 					m.newProjectError = ""
+					m.newProjectInput.SetValue("")
 					m.config.Projects = append(m.config.Projects, proj)
 					if err := saveConfig(m.config); err != nil {
 						m.fetchErr = fmt.Errorf("failed to save config: %w", err)
@@ -287,11 +292,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					}
 
-					last := len(availableProjects) - 1
-					if last >= 0 {
-						availableProjects = availableProjects[:last]
-					}
-					availableProjects = append(availableProjects, item(proj), item("- Remove Project"), item("+ Add New Project"))
+					availableProjects = buildProjectListItems(m.config.Projects)
 					m.projectList.SetItems(availableProjects)
 
 					if m.token == "" {
@@ -363,10 +364,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "enter":
 				if len(m.selectedQualities) > 0 {
-					for k := range m.selectedQualities {
-						m.softwareQualities = append(m.softwareQualities, availableSoftwareQualities[k])
+					m.softwareQualities = nil
+					for i, sq := range availableSoftwareQualities {
+						if _, ok := m.selectedQualities[i]; ok {
+							m.softwareQualities = append(m.softwareQualities, sq)
+						}
 					}
 
+					m.selectedSeverities = make(map[int]struct{})
 					for i, sq := range availableSeverities {
 						for _, configSQ := range m.config.Severities {
 							if sq == configSQ {
@@ -401,8 +406,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "enter":
 				if len(m.selectedSeverities) > 0 {
-					for k := range m.selectedSeverities {
-						m.severities = append(m.severities, availableSeverities[k])
+					m.severities = nil
+					for i, sev := range availableSeverities {
+						if _, ok := m.selectedSeverities[i]; ok {
+							m.severities = append(m.severities, sev)
+						}
 					}
 					m.config.Severities = m.severities
 					if err := saveConfig(m.config); err != nil {
@@ -450,15 +458,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					}
 
-					availableProjects = []list.Item{}
-					for _, p := range m.config.Projects {
-						availableProjects = append(availableProjects, item(p))
-					}
-					if len(m.config.Projects) > 0 {
-						availableProjects = append(availableProjects, item("- Remove Project"), item("+ Add New Project"))
-					} else {
-						availableProjects = append(availableProjects, item("+ Add New Project"))
-					}
+					availableProjects = buildProjectListItems(m.config.Projects)
 					m.projectList.SetItems(availableProjects)
 
 					m.removeProjectCursor = 0
@@ -471,7 +471,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-		case stateDone, stateError:
+		case stateError:
 			if msg.String() == "q" || msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyEsc || msg.Type == tea.KeyEnter {
 				return m, tea.Quit
 			}
@@ -519,10 +519,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
-	case stateDone:
-		m.summaryTable, cmd = m.summaryTable.Update(msg)
-		cmds = append(cmds, cmd)
-
 	case statePrompt:
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -566,9 +562,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) buildSummaryTable() {
 	severityCounts := map[string]int{
-		"HIGH":   0,
-		"MEDIUM": 0,
-		"LOW":    0,
+		"BLOCKER": 0,
+		"HIGH":    0,
+		"MEDIUM":  0,
+		"LOW":     0,
 	}
 
 	for _, issue := range m.issues {
@@ -581,6 +578,7 @@ func (m *model) buildSummaryTable() {
 	}
 
 	rows := []table.Row{
+		{"BLOCKER", strconv.Itoa(severityCounts["BLOCKER"])},
 		{"HIGH", strconv.Itoa(severityCounts["HIGH"])},
 		{"MEDIUM", strconv.Itoa(severityCounts["MEDIUM"])},
 		{"LOW", strconv.Itoa(severityCounts["LOW"])},
@@ -590,8 +588,8 @@ func (m *model) buildSummaryTable() {
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithRows(rows),
-		table.WithFocused(true),
-		table.WithHeight(5),
+		table.WithFocused(false),
+		table.WithHeight(6),
 	)
 
 	s := table.DefaultStyles()
@@ -646,7 +644,7 @@ func (m model) View() string {
 	case stateToken:
 		b.WriteString(subtitleStyle.Render("Authentication Required"))
 		b.WriteString("\n")
-		b.WriteString(subtextStyle.Render("Token not found in .env or sonarsweep.json."))
+		b.WriteString(subtextStyle.Render("Token not found in OS keychain or USER_TOKEN environment variable."))
 		b.WriteString("\n\n")
 		b.WriteString(m.tokenInput.View())
 		b.WriteString("\n")
@@ -798,24 +796,13 @@ func (m model) View() string {
 		b.WriteString("\n\n")
 		b.WriteString(helpStyle.Render("Press q to quit."))
 
-	case stateDone:
-		b.WriteString(subtitleStyle.Render(fmt.Sprintf("Summary for %s", m.projectKey)))
+	case statePrompt:
+		b.WriteString(subtitleStyle.Render(fmt.Sprintf("Export Successful! (%s)", m.projectKey)))
 		b.WriteString("\n")
-		b.WriteString(subtextStyle.Render(fmt.Sprintf("Qualities: %s", strings.Join(m.softwareQualities, ", "))))
-		b.WriteString("\n\n")
 		b.WriteString(m.summaryTable.View())
 		b.WriteString("\n\n")
 		if m.savedFile != "" {
-			b.WriteString(successStyle.Render(fmt.Sprintf("Export complete! Data saved to: %s", m.savedFile)))
-		} else {
-			b.WriteString(errorStyle.Render("Failed to save the output file."))
-		}
-
-	case statePrompt:
-		b.WriteString(subtitleStyle.Render("Export Successful!"))
-		b.WriteString("\n")
-		if m.savedFile != "" {
-			b.WriteString(subtextStyle.Render(fmt.Sprintf("Data saved to: %s", m.savedFile)))
+			b.WriteString(successStyle.Render(fmt.Sprintf("Data saved to: %s", m.savedFile)))
 		} else {
 			b.WriteString(errorStyle.Render("Failed to save the output file."))
 		}
@@ -839,13 +826,6 @@ func (m model) View() string {
 
 		b.WriteString("\n")
 		b.WriteString(helpStyle.Render("↑/↓: Navigate • Enter: Confirm • q: Quit"))
-	}
-	if m.state == stateError {
-		b.WriteString(errorStyle.Render("Error occurred"))
-		b.WriteString("\n\n")
-		b.WriteString(fmt.Sprintf("%v", m.fetchErr))
-		b.WriteString("\n\n")
-		b.WriteString(helpStyle.Render("Press q to quit."))
 	}
 
 	return appStyle.Render(b.String())

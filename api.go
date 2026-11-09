@@ -94,11 +94,12 @@ func fetchIssues(projectKey, token string, softwareQualities, severities []strin
 		if err != nil {
 			return nil, fmt.Errorf("network or connection issue: %w", err)
 		}
-		defer resp.Body.Close()
 
 		var data Response
-		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-			return nil, fmt.Errorf("failed to decode response: %w", err)
+		decodeErr := json.NewDecoder(resp.Body).Decode(&data)
+		resp.Body.Close()
+		if decodeErr != nil {
+			return nil, fmt.Errorf("failed to decode response: %w", decodeErr)
 		}
 
 		if resp.StatusCode != 200 {
@@ -114,25 +115,39 @@ func fetchIssues(projectKey, token string, softwareQualities, severities []strin
 
 		allIssues = append(allIssues, data.Issues...)
 
-		if len(data.Issues) == 0 || len(allIssues) >= data.Paging.Total {
+		if len(data.Issues) == 0 || len(allIssues) >= data.Paging.Total || (p+1)*ps > 10000 {
 			break
 		}
 		p++
 	}
 
-	// Map modern impacts to the severity field, overriding legacy severities
+	severityRank := map[string]int{
+		"INFO":    1,
+		"LOW":     2,
+		"MEDIUM":  3,
+		"HIGH":    4,
+		"BLOCKER": 5,
+	}
+
+	// Map modern impacts to the severity field, selecting the highest matching impact severity
 	for i := range allIssues {
-		impactSeverity := "LOW" // Fallback
+		bestSeverity := ""
+		bestRank := 0
 		for _, impact := range allIssues[i].Impacts {
 			for _, sq := range softwareQualities {
 				if impact.SoftwareQuality == sq {
-					impactSeverity = impact.Severity
-					goto FoundImpact
+					if rank := severityRank[impact.Severity]; rank > bestRank {
+						bestRank = rank
+						bestSeverity = impact.Severity
+					}
 				}
 			}
 		}
-	FoundImpact:
-		allIssues[i].Severity = impactSeverity
+		if bestSeverity != "" {
+			allIssues[i].Severity = bestSeverity
+		} else if allIssues[i].Severity == "" {
+			allIssues[i].Severity = "LOW"
+		}
 	}
 
 	return allIssues, nil

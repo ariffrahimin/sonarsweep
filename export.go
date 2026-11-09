@@ -12,6 +12,26 @@ import (
 
 var cliExportPath string
 
+var invalidDirChars = strings.NewReplacer(
+	":", "_",
+	"/", "_",
+	"\\", "_",
+	"*", "_",
+	"?", "_",
+	"\"", "_",
+	"<", "_",
+	">", "_",
+	"|", "_",
+)
+
+func sanitizeDirName(name string) string {
+	cleaned := invalidDirChars.Replace(strings.TrimSpace(name))
+	if cleaned == "" || cleaned == "." || cleaned == ".." {
+		return "sonarsweep_export"
+	}
+	return cleaned
+}
+
 func exportToCSV(issues []Issue, projectKey string) (string, error) {
 	dateStr := time.Now().Format("20060102_150405")
 
@@ -25,7 +45,7 @@ func exportToCSV(issues []Issue, projectKey string) (string, error) {
 		}
 
 		downloadsDir := filepath.Join(homeDir, "Downloads")
-		projectDir := filepath.Join(downloadsDir, projectKey)
+		projectDir := filepath.Join(downloadsDir, sanitizeDirName(projectKey))
 
 		if err := os.MkdirAll(projectDir, 0755); err != nil {
 			return "", fmt.Errorf("failed to create directory: %w", err)
@@ -40,21 +60,19 @@ func exportToCSV(issues []Issue, projectKey string) (string, error) {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
 	fields := []string{
 		"key", "rule", "impact_severity", "component", "line",
 		"message", "status", "effort", "author", "creationDate",
 	}
-	writer.Write(fields)
+	if err := writer.Write(fields); err != nil {
+		return "", fmt.Errorf("failed to write CSV header: %w", err)
+	}
 
 	prefix := projectKey + ":"
 
 	for _, issue := range issues {
-		component := issue.Component
-		if strings.HasPrefix(component, prefix) {
-			component = strings.TrimPrefix(component, prefix)
-		}
+		component := strings.TrimPrefix(issue.Component, prefix)
 
 		lineStr := ""
 		if issue.Line != 0 {
@@ -73,7 +91,17 @@ func exportToCSV(issues []Issue, projectKey string) (string, error) {
 			issue.Author,
 			issue.CreationDate,
 		}
-		writer.Write(row)
+		if err := writer.Write(row); err != nil {
+			return "", fmt.Errorf("failed to write CSV row: %w", err)
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return "", fmt.Errorf("failed to flush CSV writer: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return "", fmt.Errorf("failed to close CSV file: %w", err)
 	}
 
 	return outputFilename, nil

@@ -9,10 +9,13 @@ import (
 var debugFile *os.File
 
 func initDebug() {
+	if os.Getenv("SONARSWEEP_DEBUG") == "" {
+		return
+	}
 	var err error
-	debugFile, err = os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	debugFile, err = os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
-		fmt.Println("Failed to open debug log:", err)
+		fmt.Fprintln(os.Stderr, "Failed to open debug log:", err)
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
@@ -22,15 +21,17 @@ USAGE:
 FLAGS:
   -h, --help           Show this help message and exit
   -v, --version        Show version information and exit
-  --reset              Reset the saved URL and Projects from config
-  --config <path>      Use a different configuration file
+  --reset              Reset the saved URL, Projects, and Keychain Token
+  -c, --config <path>  Use a different configuration file
   --view-config        Print current configuration and exit
   --list-projects      List all saved projects and exit
   --add-project <key>  Add a project to the configuration
+  -p, --project <key>  Select project key for headless run
   --export <path>      Override the CSV export path
   --dry-run            Fetch issues but skip CSV export
   -q, --quiet          Run in headless mode (no TUI)
   -s, --severity <l>   Filter by severities (BLOCKER,HIGH,MEDIUM,LOW)
+  --overall            Fetch issues from overall code (default: new code only)
 
 EXAMPLES:
   sonarsweep --help
@@ -65,20 +66,24 @@ func main() {
 		viewConfig   bool
 		listProjects bool
 		addProject   string
+		project      string
 		exportPath   string
 		dryRun       bool
 		quiet        bool
 		severities   string
+		overall      bool
 	)
 
 	flag.BoolVar(&help, "help", false, "Show this help message and exit")
 	flag.BoolVar(&help, "h", false, "Show this help message and exit (shorthand)")
 	flag.BoolVar(&version, "version", false, "Show version information and exit")
 	flag.BoolVar(&version, "v", false, "Show version information and exit (shorthand)")
-	flag.BoolVar(&reset, "reset", false, "Reset the saved URL and Projects from config")
+	flag.BoolVar(&reset, "reset", false, "Reset the saved URL, Projects, and Keychain Token")
 	flag.BoolVar(&viewConfig, "view-config", false, "Print current configuration and exit")
 	flag.BoolVar(&listProjects, "list-projects", false, "List all saved projects and exit")
 	flag.StringVar(&addProject, "add-project", "", "Add a project to the configuration")
+	flag.StringVar(&project, "project", "", "Select project key for headless run")
+	flag.StringVar(&project, "p", "", "Select project key for headless run (shorthand)")
 	flag.StringVar(&exportPath, "export", "", "Override the CSV export path")
 	flag.BoolVar(&dryRun, "dry-run", false, "Fetch issues but skip CSV export")
 	flag.BoolVar(&quiet, "quiet", false, "Run in headless mode (no TUI)")
@@ -87,6 +92,7 @@ func main() {
 	flag.StringVar(&configPath, "c", "", "Use a different configuration file (shorthand)")
 	flag.StringVar(&severities, "severity", "", "Filter by impact severities (comma-separated: BLOCKER,HIGH,MEDIUM,LOW)")
 	flag.StringVar(&severities, "s", "", "Filter by impact severities (comma-separated: BLOCKER,HIGH,MEDIUM,LOW) (shorthand)")
+	flag.BoolVar(&overall, "overall", false, "Fetch issues from overall code instead of new code period")
 
 	flag.Usage = printHelp
 	flag.Parse()
@@ -102,13 +108,12 @@ func main() {
 	}
 
 	if reset {
-		cfg := loadConfig()
-		cfg.SonarURL = ""
-		cfg.Projects = []string{}
+		cfg := defaultConfig
 		if err := saveConfig(cfg); err != nil {
 			fmt.Printf("Failed to reset config: %v\n", err)
 			os.Exit(1)
 		}
+		_ = DeleteToken()
 		fmt.Println("Configuration reset successfully.")
 		os.Exit(0)
 	}
@@ -132,7 +137,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	isHeadless := quiet || dryRun || exportPath != ""
+	isHeadless := quiet || dryRun || exportPath != "" || project != ""
 
 	if addProject != "" {
 		cfg := loadConfig()
@@ -186,11 +191,14 @@ func main() {
 			os.Exit(1)
 		}
 
-		projectKey := addProject
+		projectKey := project
+		if projectKey == "" {
+			projectKey = addProject
+		}
 		if projectKey == "" {
 			if len(cfg.Projects) == 0 {
 				if !quiet {
-					fmt.Fprintln(os.Stderr, "Error: No projects configured. Use --add-project <key> to specify one.")
+					fmt.Fprintln(os.Stderr, "Error: No projects configured. Use --project <key> or --add-project <key> to specify one.")
 				}
 				os.Exit(1)
 			}
@@ -203,14 +211,14 @@ func main() {
 
 		severitiesToUse := cfg.Severities
 		if severities != "" {
-			severitiesToUse = strings.Split(severities, ",")
+			severitiesToUse = parseSeverities(severities)
 		}
 
 		if !quiet {
 			fmt.Printf("Fetching issues for project: %s\n", projectKey)
 		}
 
-		issues, err := fetchIssues(projectKey, token, cfg.SoftwareQualities, severitiesToUse, true)
+		issues, err := fetchIssues(projectKey, token, cfg.SoftwareQualities, severitiesToUse, !overall)
 		if err != nil {
 			if !quiet {
 				fmt.Fprintf(os.Stderr, "Error fetching issues: %v\n", err)
@@ -220,15 +228,16 @@ func main() {
 
 		if dryRun {
 			if !quiet {
-				severityCounts := map[string]int{"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+				severityCounts := map[string]int{"BLOCKER": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
 				for _, issue := range issues {
 					severityCounts[issue.Severity]++
 				}
 				fmt.Println("\nDry Run Summary:")
 				fmt.Printf("Total Issues: %d\n", len(issues))
-				fmt.Printf("HIGH:   %d\n", severityCounts["HIGH"])
-				fmt.Printf("MEDIUM: %d\n", severityCounts["MEDIUM"])
-				fmt.Printf("LOW:    %d\n", severityCounts["LOW"])
+				fmt.Printf("BLOCKER: %d\n", severityCounts["BLOCKER"])
+				fmt.Printf("HIGH:    %d\n", severityCounts["HIGH"])
+				fmt.Printf("MEDIUM:  %d\n", severityCounts["MEDIUM"])
+				fmt.Printf("LOW:     %d\n", severityCounts["LOW"])
 			}
 			os.Exit(0)
 		}

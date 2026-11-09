@@ -66,24 +66,35 @@ func loadConfig() Config {
 	if len(config.Severities) == 0 {
 		config.Severities = defaultConfig.Severities
 	} else {
-		validSeverities := []string{}
-		seen := map[string]bool{}
-		for _, s := range config.Severities {
-			for _, valid := range defaultConfig.Severities {
-				if s == valid && !seen[s] {
-					validSeverities = append(validSeverities, s)
-					seen[s] = true
-					break
-				}
-			}
-		}
-		if len(validSeverities) == 0 {
-			config.Severities = defaultConfig.Severities
-		} else {
-			config.Severities = validSeverities
-		}
+		config.Severities = normalizeSeverities(config.Severities)
 	}
 	return config
+}
+
+func normalizeSeverities(raw []string) []string {
+	validSeverities := []string{}
+	seen := map[string]bool{}
+	for _, s := range raw {
+		normalized := strings.ToUpper(strings.TrimSpace(s))
+		for _, valid := range defaultConfig.Severities {
+			if normalized == valid && !seen[normalized] {
+				validSeverities = append(validSeverities, normalized)
+				seen[normalized] = true
+				break
+			}
+		}
+	}
+	if len(validSeverities) == 0 {
+		return defaultConfig.Severities
+	}
+	return validSeverities
+}
+
+func parseSeverities(input string) []string {
+	if strings.TrimSpace(input) == "" {
+		return defaultConfig.Severities
+	}
+	return normalizeSeverities(strings.Split(input, ","))
 }
 
 func saveConfig(config Config) error {

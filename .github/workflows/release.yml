@@ -49,6 +49,9 @@ jobs:
           - platform: linux
             arch: amd64
             artifact: sonarsweep-linux-amd64.tar.gz
+          - platform: linux
+            arch: arm64
+            artifact: sonarsweep-linux-arm64.tar.gz
           - platform: windows
             arch: amd64
             artifact: sonarsweep-windows-amd64.zip

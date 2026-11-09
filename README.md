@@ -15,10 +15,10 @@
 
 - **Beautiful TUI** — Interactive terminal interface with arrow-key navigation and real-time progress
 - **Smart Pagination** — Automatically handles large SonarQube projects with hundreds of issues (Note: SonarQube API has a strict 10,000 issue limit per search)
-- **Flexible Filtering** — Filter by impact severities (HIGH, MEDIUM, LOW) and software qualities (RELIABILITY, SECURITY, MAINTAINABILITY)
+- **Flexible Filtering** — Filter by impact severities (BLOCKER, HIGH, MEDIUM, LOW) and software qualities (RELIABILITY, SECURITY, MAINTAINABILITY)
 - **Clean CSV Export** — Outputs structured CSV files organized by project folder
 - **Persistent Configuration** — JSON-based config saves your URL and projects between runs
-- **CLI Flags** — Upcoming automation support for CI/CD pipelines with `--dry-run`, `--export`, `--quiet` (See [Next Release](next_release.md))
+- **CLI Flags** — Headless automation support for CI/CD pipelines with `--dry-run`, `--export`, `--quiet`, `--project`, and `--overall`
 - **Secure Token Handling** — Token is securely stored in your operating system's native keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service) or via `.env`, never in plain-text config files.
 
 ---
@@ -46,7 +46,7 @@ brew install sonarsweep
 git clone https://github.com/ariffrahimin/sonarsweep.git
 cd sonarsweep
 go mod tidy
-go build -o sonarsweep main.go
+go build -o sonarsweep .
 ```
 
 ---
@@ -136,10 +136,12 @@ SonarSweep supports full command-line operation for automation and scripting:
 | `--view-config` | Print current configuration | `sonarsweep --view-config` |
 | `--list-projects` | List all saved projects | `sonarsweep --list-projects` |
 | `--add-project <key>` | Add a project to config | `sonarsweep --add-project my-project` |
+| `-p`, `--project <key>` | Select project key for headless run | `sonarsweep --project my-project --dry-run` |
 | `--export <path>` | Override CSV export path | `sonarsweep --export /tmp/output.csv` |
 | `--dry-run` | Fetch issues without saving | `sonarsweep --dry-run` |
 | `-q`, `--quiet` | Headless mode (no TUI) | `sonarsweep --quiet` |
 | `-s`, `--severity` | Filter by severities | `sonarsweep --severity LOW` or `sonarsweep -s LOW,MEDIUM` |
+| `--overall` | Fetch overall code issues instead of new code only | `sonarsweep --dry-run --overall` |
 
 ---
 
@@ -192,7 +194,7 @@ sonarsweep --view-config
 ### Build
 
 ```bash
-go build -o sonarsweep main.go
+go build -o sonarsweep .
 ```
 
 ### Test
@@ -204,7 +206,7 @@ go test ./...
 ### Run
 
 ```bash
-go run main.go
+go run .
 ```
 
 ---

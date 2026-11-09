@@ -298,3 +298,17 @@ func TestSaveConfig_AndLoadConfig_RoundTrip_WithSeverities(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSeverities_NormalizesAndFiltersCLIInput(t *testing.T) {
+	got := parseSeverities(" blocker , high, invalid, low, HIGH ")
+	want := []string{"BLOCKER", "HIGH", "LOW"}
+	if len(got) != len(want) {
+		t.Fatalf("Expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Expected[%d] = %s, got %s", i, want[i], got[i])
+		}
+	}
+}
+
