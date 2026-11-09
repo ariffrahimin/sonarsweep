@@ -4,10 +4,10 @@
 .env.*.local
 
 # Compiled binary
-sonarsweep
-sonarsweep.exe
-sonarsweep-arm64
-sonarsweep-amd64
+/sonarsweep
+/sonarsweep.exe
+/sonarsweep-arm64
+/sonarsweep-amd64
 
 # Build artifacts
 dist/
