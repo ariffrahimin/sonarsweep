@@ -62,6 +62,8 @@ func loadConfig() Config {
 	config.SonarURL = strings.TrimRight(config.SonarURL, "/")
 	if len(config.SoftwareQualities) == 0 {
 		config.SoftwareQualities = defaultConfig.SoftwareQualities
+	} else {
+		config.SoftwareQualities = normalizeSoftwareQualities(config.SoftwareQualities)
 	}
 	if len(config.Severities) == 0 {
 		config.Severities = defaultConfig.Severities
@@ -71,23 +73,27 @@ func loadConfig() Config {
 	return config
 }
 
-func normalizeSeverities(raw []string) []string {
-	validSeverities := []string{}
+func normalizeChoices(raw, allowed []string) []string {
+	validChoices := []string{}
 	seen := map[string]bool{}
-	for _, s := range raw {
-		normalized := strings.ToUpper(strings.TrimSpace(s))
-		for _, valid := range defaultConfig.Severities {
+	for _, item := range raw {
+		normalized := strings.ToUpper(strings.TrimSpace(item))
+		for _, valid := range allowed {
 			if normalized == valid && !seen[normalized] {
-				validSeverities = append(validSeverities, normalized)
+				validChoices = append(validChoices, normalized)
 				seen[normalized] = true
 				break
 			}
 		}
 	}
-	if len(validSeverities) == 0 {
-		return defaultConfig.Severities
+	if len(validChoices) == 0 {
+		return allowed
 	}
-	return validSeverities
+	return validChoices
+}
+
+func normalizeSeverities(raw []string) []string {
+	return normalizeChoices(raw, defaultConfig.Severities)
 }
 
 func parseSeverities(input string) []string {
@@ -97,6 +103,30 @@ func parseSeverities(input string) []string {
 	return normalizeSeverities(strings.Split(input, ","))
 }
 
+func normalizeSoftwareQualities(raw []string) []string {
+	return normalizeChoices(raw, defaultConfig.SoftwareQualities)
+}
+
+func parseSoftwareQualities(input string) []string {
+	if strings.TrimSpace(input) == "" {
+		return defaultConfig.SoftwareQualities
+	}
+	return normalizeSoftwareQualities(strings.Split(input, ","))
+}
+
+func removeProjectFromSlice(projects []string, target string) ([]string, bool) {
+	result := make([]string, 0, len(projects))
+	removed := false
+	for _, p := range projects {
+		if p == target {
+			removed = true
+			continue
+		}
+		result = append(result, p)
+	}
+	return result, removed
+}
+
 func saveConfig(config Config) error {
 	path := getConfigPath()
 	data, err := json.MarshalIndent(config, "", "  ")
@@ -104,4 +134,30 @@ func saveConfig(config Config) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
+}
+
+func detectSonarProperties(dir string) (projectKey, hostURL string) {
+	data, err := os.ReadFile(filepath.Join(dir, "sonar-project.properties"))
+	if err != nil {
+		return "", ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+		switch key {
+		case "sonar.projectKey":
+			projectKey = val
+		case "sonar.host.url":
+			hostURL = strings.TrimRight(val, "/")
+		}
+	}
+	return projectKey, hostURL
 }

@@ -31,6 +31,10 @@ func (i item) Description() string {
 		return "Add a new project key"
 	case "- Remove Project":
 		return "Remove an existing project"
+	case "* Change SonarQube URL":
+		return "Update the SonarQube server URL"
+	case "* Update Token":
+		return "Update the authentication token in OS keychain"
 	}
 	return "Fetch issues for this project"
 }
@@ -52,17 +56,31 @@ const (
 )
 
 type issuesFetchedMsg struct {
-	issues []Issue
-	err    error
+	issues    []Issue
+	total     int
+	truncated bool
+	err       error
 }
 
-func fetchIssuesCmd(projectKey, token string, softwareQualities, severities []string, isNewCodePeriod bool) tea.Cmd {
+func fetchIssuesCmd(baseURL, projectKey, token string, softwareQualities, severities []string, isNewCodePeriod bool) tea.Cmd {
 	return func() tea.Msg {
-		issues, err := fetchIssues(projectKey, token, softwareQualities, severities, isNewCodePeriod)
+		res, err := fetchIssuesWithOptions(FetchOptions{
+			BaseURL:           baseURL,
+			ProjectKey:        projectKey,
+			Token:             token,
+			SoftwareQualities: softwareQualities,
+			Severities:        severities,
+			IsNewCodePeriod:   isNewCodePeriod,
+		})
 		if err != nil {
 			return issuesFetchedMsg{err: err}
 		}
-		return issuesFetchedMsg{issues: issues, err: nil}
+		return issuesFetchedMsg{
+			issues:    res.Issues,
+			total:     res.Total,
+			truncated: res.Truncated,
+			err:       nil,
+		}
 	}
 }
 
@@ -113,9 +131,11 @@ type model struct {
 	promptCursor int
 
 	// Fetching
-	spinner  spinner.Model
-	fetchErr error
-	issues   []Issue
+	spinner   spinner.Model
+	fetchErr  error
+	issues    []Issue
+	total     int
+	truncated bool
 
 	// Done
 	summaryTable table.Model
@@ -123,7 +143,7 @@ type model struct {
 }
 
 func buildProjectListItems(projects []string) []list.Item {
-	items := make([]list.Item, 0, len(projects)+2)
+	items := make([]list.Item, 0, len(projects)+4)
 	for _, p := range projects {
 		items = append(items, item(p))
 	}
@@ -132,6 +152,7 @@ func buildProjectListItems(projects []string) []list.Item {
 	} else {
 		items = append(items, item("+ Add New Project"))
 	}
+	items = append(items, item("* Change SonarQube URL"), item("* Update Token"))
 	return items
 }
 
@@ -236,9 +257,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.projectList.SetSize(msg.Width-h, msg.Height-v-12) // -12 to account for the larger ASCII art header
 
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
-			if m.state != stateError {
+		if msg.Type == tea.KeyCtrlC {
+			return m, tea.Quit
+		}
+		if msg.Type == tea.KeyEsc {
+			switch m.state {
+			case stateQualities:
+				m.state = stateProject
+				return m, nil
+			case stateSeverities:
+				m.state = stateQualities
+				return m, nil
+			case stateCodePeriod:
+				m.state = stateSeverities
+				return m, nil
+			case stateNewProject:
+				if len(m.config.Projects) > 0 {
+					m.newProjectError = ""
+					m.newProjectInput.SetValue("")
+					m.state = stateProject
+					return m, nil
+				}
+				return m, tea.Quit
+			case stateURL:
+				if m.config.SonarURL != "" {
+					m.urlError = ""
+					m.state = stateProject
+					return m, nil
+				}
+				return m, tea.Quit
+			case stateToken:
+				if m.token != "" {
+					m.state = stateProject
+					return m, nil
+				}
+				return m, tea.Quit
+			case stateRemoveProject:
+				m.removeProjectCursor = 0
+				m.state = stateProject
+				return m, nil
+			case stateError:
+				// Handled below
+			default:
 				return m, tea.Quit
 			}
 		}
@@ -306,8 +366,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case stateToken:
 			if msg.Type == tea.KeyEnter {
-				m.token = m.tokenInput.Value()
-				if strings.TrimSpace(m.token) != "" {
+				tokenVal := strings.TrimSpace(m.tokenInput.Value())
+				if tokenVal != "" {
+					m.token = tokenVal
+					m.tokenInput.SetValue("")
 					if err := StoreToken(m.token); err != nil {
 						m.fetchErr = fmt.Errorf("failed to store token: %w", err)
 						m.state = stateError
@@ -321,21 +383,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case stateProject:
 			if msg.Type == tea.KeyEnter {
 				if i, ok := m.projectList.SelectedItem().(item); ok {
-					if i == "+ Add New Project" {
+					switch i {
+					case "+ Add New Project":
+						m.newProjectError = ""
+						m.newProjectInput.Focus()
 						m.state = stateNewProject
-						return m, nil
-					}
-					if i == "- Remove Project" {
+						return m, textinput.Blink
+					case "- Remove Project":
 						m.removeProjectCursor = 0
 						m.state = stateRemoveProject
 						return m, nil
+					case "* Change SonarQube URL":
+						m.urlError = ""
+						m.urlInput.SetValue(m.config.SonarURL)
+						m.urlInput.Focus()
+						m.state = stateURL
+						return m, textinput.Blink
+					case "* Update Token":
+						m.tokenInput.SetValue("")
+						m.tokenInput.Focus()
+						m.state = stateToken
+						return m, textinput.Blink
 					}
 					m.projectKey = string(i)
 
-					for i, sq := range availableSoftwareQualities {
+					m.selectedQualities = make(map[int]struct{})
+					for idx, sq := range availableSoftwareQualities {
 						for _, configSQ := range m.config.SoftwareQualities {
 							if sq == configSQ {
-								m.selectedQualities[i] = struct{}{}
+								m.selectedQualities[idx] = struct{}{}
 								break
 							}
 						}
@@ -369,6 +445,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if _, ok := m.selectedQualities[i]; ok {
 							m.softwareQualities = append(m.softwareQualities, sq)
 						}
+					}
+					m.config.SoftwareQualities = m.softwareQualities
+					if err := saveConfig(m.config); err != nil {
+						m.fetchErr = fmt.Errorf("failed to save config: %w", err)
+						m.state = stateError
+						return m, nil
 					}
 
 					m.selectedSeverities = make(map[int]struct{})
@@ -436,7 +518,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				m.isNewCodePeriod = m.codePeriodCursor == 0
 				m.state = stateFetching
-				return m, tea.Batch(m.spinner.Tick, fetchIssuesCmd(m.projectKey, m.token, m.softwareQualities, m.severities, m.isNewCodePeriod))
+				return m, tea.Batch(m.spinner.Tick, fetchIssuesCmd(m.config.SonarURL, m.projectKey, m.token, m.softwareQualities, m.severities, m.isNewCodePeriod))
 			}
 
 		case stateRemoveProject:
@@ -472,6 +554,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case stateError:
+			if msg.String() == "r" {
+				m.fetchErr = nil
+				m.state = stateProject
+				return m, nil
+			}
 			if msg.String() == "q" || msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyEsc || msg.Type == tea.KeyEnter {
 				return m, tea.Quit
 			}
@@ -504,6 +591,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.issues = msg.issues
+			m.total = msg.total
+			m.truncated = msg.truncated
 			m.buildSummaryTable()
 			var err error
 			m.savedFile, err = exportToCSV(m.issues, m.projectKey)
@@ -534,11 +623,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if m.promptCursor == 0 {
 					m.projectKey = ""
-					m.softwareQualities = []string{}
+					m.softwareQualities = nil
 					m.selectedQualities = make(map[int]struct{})
-					m.severities = []string{}
+					m.severities = m.config.Severities
 					m.selectedSeverities = make(map[int]struct{})
 					m.issues = nil
+					m.total = 0
+					m.truncated = false
 					m.qualitiesCursor = 0
 					m.severitiesCursor = 0
 					m.codePeriodCursor = 0
@@ -794,13 +885,17 @@ func (m model) View() string {
 		b.WriteString("\n\n")
 		b.WriteString(fmt.Sprintf("%v", m.fetchErr))
 		b.WriteString("\n\n")
-		b.WriteString(helpStyle.Render("Press q to quit."))
+		b.WriteString(helpStyle.Render("Press r to return to menu, or q to quit."))
 
 	case statePrompt:
 		b.WriteString(subtitleStyle.Render(fmt.Sprintf("Export Successful! (%s)", m.projectKey)))
 		b.WriteString("\n")
 		b.WriteString(m.summaryTable.View())
 		b.WriteString("\n\n")
+		if m.truncated {
+			b.WriteString(errorStyle.Render(fmt.Sprintf("Warning: Export capped at SonarQube's 10,000 issue limit (out of %d total).", m.total)))
+			b.WriteString("\n\n")
+		}
 		if m.savedFile != "" {
 			b.WriteString(successStyle.Render(fmt.Sprintf("Data saved to: %s", m.savedFile)))
 		} else {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -106,8 +107,85 @@ func TestFetchIssues_MapsHighestMatchingImpactSeverityAndPreservesLegacyFallback
 	if issues[0].Severity != "BLOCKER" {
 		t.Errorf("expected highest matching impact severity BLOCKER, got %s", issues[0].Severity)
 	}
+	if issues[0].SoftwareQuality != "SECURITY" {
+		t.Errorf("expected highest matching impact software quality SECURITY, got %s", issues[0].SoftwareQuality)
+	}
 	if issues[1].Severity != "HIGH" {
 		t.Errorf("expected legacy issue without impacts to preserve HIGH, got %s", issues[1].Severity)
+	}
+}
+
+func TestFetchIssuesWithOptions_PassesBranchAndPullRequestAndReportsTruncation(t *testing.T) {
+	var gotBranch, gotPR string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBranch = r.URL.Query().Get("branch")
+		gotPR = r.URL.Query().Get("pullRequest")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(Response{
+			Paging: Paging{Total: 12500},
+			Issues: []Issue{},
+		})
+	}))
+	defer srv.Close()
+
+	res, err := fetchIssuesWithOptions(FetchOptions{
+		BaseURL:           srv.URL,
+		ProjectKey:        "my-proj",
+		Token:             "tok",
+		SoftwareQualities: []string{"SECURITY"},
+		Severities:        []string{"HIGH"},
+		IsNewCodePeriod:   true,
+		Branch:            "feature/login",
+		PullRequest:       "42",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotBranch != "feature/login" {
+		t.Errorf("expected branch query param 'feature/login', got %q", gotBranch)
+	}
+	if gotPR != "42" {
+		t.Errorf("expected pullRequest query param '42', got %q", gotPR)
+	}
+	if !res.Truncated || res.Total != 12500 {
+		t.Errorf("expected Truncated=true and Total=12500, got Truncated=%v Total=%d", res.Truncated, res.Total)
+	}
+}
+
+func TestFetchRuleDetails_ParsesDescriptionSectionsAndLegacyDesc(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/rules/show" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		key := r.URL.Query().Get("key")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"rule": {
+				"key": "` + key + `",
+				"name": "Functions should not have too many parameters",
+				"severity": "MAJOR",
+				"type": "CODE_SMELL",
+				"descriptionSections": [
+					{"key": "root_cause", "content": "<p>Too many parameters make functions hard to read.</p>"},
+					{"key": "how_to_fix", "content": "<p>Group related parameters into a struct.</p>"}
+				]
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	detail, err := fetchRuleDetails(srv.URL, "token-123", "go:S107")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if detail.Key != "go:S107" || detail.Name != "Functions should not have too many parameters" {
+		t.Errorf("unexpected rule metadata: %+v", detail)
+	}
+	if !strings.Contains(detail.Description, "Too many parameters make functions hard to read.") ||
+		!strings.Contains(detail.Description, "Group related parameters into a struct.") ||
+		strings.Contains(detail.Description, "<p>") {
+		t.Errorf("expected HTML-stripped description with both sections, got: %q", detail.Description)
 	}
 }
 

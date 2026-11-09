@@ -312,3 +312,88 @@ func TestParseSeverities_NormalizesAndFiltersCLIInput(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_InvalidAndDuplicateSoftwareQualities(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "sonarsweep.json")
+
+	originalConfigPath := configPath
+	configPath = tmpFile
+	defer func() { configPath = originalConfigPath }()
+
+	jsonContent := `{
+		"sonarqube_url": "http://test.com:9000",
+		"software_qualities": ["security", "INVALID", "SECURITY", "reliability"]
+	}`
+	_ = os.WriteFile(tmpFile, []byte(jsonContent), 0600)
+
+	cfg := loadConfig()
+	want := []string{"SECURITY", "RELIABILITY"}
+	if len(cfg.SoftwareQualities) != len(want) {
+		t.Fatalf("Expected %v, got %v", want, cfg.SoftwareQualities)
+	}
+	for i := range want {
+		if cfg.SoftwareQualities[i] != want[i] {
+			t.Errorf("Expected[%d] = %s, got %s", i, want[i], cfg.SoftwareQualities[i])
+		}
+	}
+}
+
+func TestParseSoftwareQualities_NormalizesAndFiltersCLIInput(t *testing.T) {
+	got := parseSoftwareQualities(" security , invalid, maintainability, SECURITY ")
+	want := []string{"SECURITY", "MAINTAINABILITY"}
+	if len(got) != len(want) {
+		t.Fatalf("Expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Expected[%d] = %s, got %s", i, want[i], got[i])
+		}
+	}
+}
+
+func TestRemoveProjectFromSlice(t *testing.T) {
+	initial := []string{"proj-a", "proj-b", "proj-c"}
+	updated, removed := removeProjectFromSlice(initial, "proj-b")
+	if !removed {
+		t.Fatalf("Expected removed=true when project exists")
+	}
+	want := []string{"proj-a", "proj-c"}
+	if len(updated) != len(want) || updated[0] != "proj-a" || updated[1] != "proj-c" {
+		t.Errorf("Expected %v, got %v", want, updated)
+	}
+
+	_, removedMissing := removeProjectFromSlice(updated, "non-existent")
+	if removedMissing {
+		t.Errorf("Expected removed=false when project does not exist")
+	}
+}
+
+func TestDetectSonarProperties_ParsesProjectKeyAndHostURL(t *testing.T) {
+	tmpDir := t.TempDir()
+	propsContent := `
+# SonarQube configuration
+sonar.projectKey = "my-org_backend-api"
+sonar.projectName=Backend API
+sonar.host.url = https://sonar.internal.example.com/
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "sonar-project.properties"), []byte(propsContent), 0600); err != nil {
+		t.Fatalf("failed to write properties file: %v", err)
+	}
+
+	proj, host := detectSonarProperties(tmpDir)
+	if proj != "my-org_backend-api" {
+		t.Errorf("expected projectKey 'my-org_backend-api', got %q", proj)
+	}
+	if host != "https://sonar.internal.example.com" {
+		t.Errorf("expected hostURL 'https://sonar.internal.example.com', got %q", host)
+	}
+
+	emptyProj, emptyHost := detectSonarProperties(t.TempDir())
+	if emptyProj != "" || emptyHost != "" {
+		t.Errorf("expected empty strings when file does not exist, got proj=%q host=%q", emptyProj, emptyHost)
+	}
+}
+
+
+
+

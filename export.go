@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,67 @@ import (
 )
 
 var cliExportPath string
+
+type JSONIssue struct {
+	Key             string `json:"key"`
+	Rule            string `json:"rule"`
+	ImpactSeverity  string `json:"impact_severity"`
+	SoftwareQuality string `json:"software_quality"`
+	File            string `json:"file"`
+	Line            int    `json:"line,omitempty"`
+	Message         string `json:"message"`
+	Status          string `json:"status"`
+	Effort          string `json:"effort,omitempty"`
+	Author          string `json:"author,omitempty"`
+	CreationDate    string `json:"creationDate,omitempty"`
+}
+
+type JSONReport struct {
+	Project   string         `json:"project"`
+	Total     int            `json:"total"`
+	Truncated bool           `json:"truncated"`
+	Summary   map[string]int `json:"summary"`
+	Issues    []JSONIssue    `json:"issues"`
+}
+
+func formatIssuesJSON(res FetchResult, projectKey string) ([]byte, error) {
+	summary := map[string]int{
+		"BLOCKER": 0,
+		"HIGH":    0,
+		"MEDIUM":  0,
+		"LOW":     0,
+	}
+	prefix := projectKey + ":"
+	items := make([]JSONIssue, 0, len(res.Issues))
+	for _, issue := range res.Issues {
+		summary[issue.Severity]++
+		items = append(items, JSONIssue{
+			Key:             issue.Key,
+			Rule:            issue.Rule,
+			ImpactSeverity:  issue.Severity,
+			SoftwareQuality: issue.SoftwareQuality,
+			File:            strings.TrimPrefix(issue.Component, prefix),
+			Line:            issue.Line,
+			Message:         issue.Message,
+			Status:          issue.Status,
+			Effort:          issue.Effort,
+			Author:          issue.Author,
+			CreationDate:    issue.CreationDate,
+		})
+	}
+	total := res.Total
+	if total == 0 {
+		total = len(res.Issues)
+	}
+	report := JSONReport{
+		Project:   projectKey,
+		Total:     total,
+		Truncated: res.Truncated,
+		Summary:   summary,
+		Issues:    items,
+	}
+	return json.MarshalIndent(report, "", "  ")
+}
 
 var invalidDirChars = strings.NewReplacer(
 	":", "_",
@@ -62,7 +124,7 @@ func exportToCSV(issues []Issue, projectKey string) (string, error) {
 	writer := csv.NewWriter(file)
 
 	fields := []string{
-		"key", "rule", "impact_severity", "component", "line",
+		"key", "rule", "impact_severity", "software_quality", "component", "line",
 		"message", "status", "effort", "author", "creationDate",
 	}
 	if err := writer.Write(fields); err != nil {
@@ -83,6 +145,7 @@ func exportToCSV(issues []Issue, projectKey string) (string, error) {
 			issue.Key,
 			issue.Rule,
 			issue.Severity,
+			issue.SoftwareQuality,
 			component,
 			lineStr,
 			issue.Message,
