@@ -116,5 +116,84 @@ func TestUpdate_StateFetching_BuildsAndRendersSummaryTableWithBlocker(t *testing
 	}
 }
 
+func TestUpdate_StateQualities_PersistsSoftwareQualitiesAndEscGoesBack(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalConfigPath := configPath
+	configPath = filepath.Join(tmpDir, "config.json")
+	defer func() { configPath = originalConfigPath }()
+
+	availableSoftwareQualities = []string{"RELIABILITY", "SECURITY", "MAINTAINABILITY"}
+	availableSeverities = []string{"BLOCKER", "HIGH", "MEDIUM", "LOW"}
+
+	m := model{
+		state:  stateQualities,
+		config: defaultConfig,
+		selectedQualities: map[int]struct{}{
+			1: {}, // SECURITY
+		},
+	}
+
+	// Pressing Esc in stateQualities should go back to stateProject instead of quitting
+	backModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Errorf("Expected Esc in stateQualities not to quit, got non-nil cmd")
+	}
+	if backModel.(model).state != stateProject {
+		t.Errorf("Expected stateProject after Esc in stateQualities, got %v", backModel.(model).state)
+	}
+
+	// Pressing Enter in stateQualities should persist config.SoftwareQualities
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updatedModel.(model)
+	want := []string{"SECURITY"}
+	if !reflect.DeepEqual(got.config.SoftwareQualities, want) {
+		t.Errorf("Expected config.SoftwareQualities %v, got %v", want, got.config.SoftwareQualities)
+	}
+	loaded := loadConfig()
+	if !reflect.DeepEqual(loaded.SoftwareQualities, want) {
+		t.Errorf("Expected persisted SoftwareQualities %v, got %v", want, loaded.SoftwareQualities)
+	}
+}
+
+func TestUpdate_StateFetching_ShowsTruncationWarningAndResetsOnRepeat(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalExportPath := cliExportPath
+	cliExportPath = filepath.Join(tmpDir, "out.csv")
+	defer func() { cliExportPath = originalExportPath }()
+
+	cfg := defaultConfig
+	cfg.Severities = []string{"BLOCKER", "HIGH"}
+
+	m := model{
+		state:             stateFetching,
+		config:            cfg,
+		projectKey:        "huge-project",
+		softwareQualities: []string{"SECURITY"},
+	}
+
+	updatedModel, _ := m.Update(issuesFetchedMsg{
+		issues:    []Issue{{Key: "1", Severity: "BLOCKER"}},
+		total:     12500,
+		truncated: true,
+	})
+	got := updatedModel.(model)
+
+	out := got.View()
+	if !strings.Contains(out, "10,000") || !strings.Contains(out, "12500") {
+		t.Errorf("Expected truncation warning mentioning 10,000 and 12500 in view, got:\n%s", out)
+	}
+
+	// Press Enter on "Export another project" (promptCursor == 0)
+	resetModel, _ := got.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	afterReset := resetModel.(model)
+	if !reflect.DeepEqual(afterReset.severities, cfg.Severities) {
+		t.Errorf("Expected severities to reset to config.Severities %v, got %v", cfg.Severities, afterReset.severities)
+	}
+	if afterReset.truncated {
+		t.Errorf("Expected truncated flag to be cleared after reset")
+	}
+}
+
+
 
 

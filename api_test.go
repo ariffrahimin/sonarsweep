@@ -106,8 +106,48 @@ func TestFetchIssues_MapsHighestMatchingImpactSeverityAndPreservesLegacyFallback
 	if issues[0].Severity != "BLOCKER" {
 		t.Errorf("expected highest matching impact severity BLOCKER, got %s", issues[0].Severity)
 	}
+	if issues[0].SoftwareQuality != "SECURITY" {
+		t.Errorf("expected highest matching impact software quality SECURITY, got %s", issues[0].SoftwareQuality)
+	}
 	if issues[1].Severity != "HIGH" {
 		t.Errorf("expected legacy issue without impacts to preserve HIGH, got %s", issues[1].Severity)
+	}
+}
+
+func TestFetchIssuesWithOptions_PassesBranchAndPullRequestAndReportsTruncation(t *testing.T) {
+	var gotBranch, gotPR string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBranch = r.URL.Query().Get("branch")
+		gotPR = r.URL.Query().Get("pullRequest")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(Response{
+			Paging: Paging{Total: 12500},
+			Issues: []Issue{},
+		})
+	}))
+	defer srv.Close()
+
+	res, err := fetchIssuesWithOptions(FetchOptions{
+		BaseURL:           srv.URL,
+		ProjectKey:        "my-proj",
+		Token:             "tok",
+		SoftwareQualities: []string{"SECURITY"},
+		Severities:        []string{"HIGH"},
+		IsNewCodePeriod:   true,
+		Branch:            "feature/login",
+		PullRequest:       "42",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotBranch != "feature/login" {
+		t.Errorf("expected branch query param 'feature/login', got %q", gotBranch)
+	}
+	if gotPR != "42" {
+		t.Errorf("expected pullRequest query param '42', got %q", gotPR)
+	}
+	if !res.Truncated || res.Total != 12500 {
+		t.Errorf("expected Truncated=true and Total=12500, got Truncated=%v Total=%d", res.Truncated, res.Total)
 	}
 }
 

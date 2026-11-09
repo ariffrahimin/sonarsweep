@@ -13,20 +13,38 @@ import (
 var SONAR_URL string
 
 type Issue struct {
-	Key          string `json:"key"`
-	Rule         string `json:"rule"`
-	Severity     string `json:"severity"`
-	Component    string `json:"component"`
-	Line         int    `json:"line"`
-	Message      string `json:"message"`
-	Status       string `json:"status"`
-	Effort       string `json:"effort"`
-	Author       string `json:"author"`
-	CreationDate string `json:"creationDate"`
-	Impacts      []struct {
+	Key             string `json:"key"`
+	Rule            string `json:"rule"`
+	Severity        string `json:"severity"`
+	SoftwareQuality string `json:"-"`
+	Component       string `json:"component"`
+	Line            int    `json:"line"`
+	Message         string `json:"message"`
+	Status          string `json:"status"`
+	Effort          string `json:"effort"`
+	Author          string `json:"author"`
+	CreationDate    string `json:"creationDate"`
+	Impacts         []struct {
 		SoftwareQuality string `json:"softwareQuality"`
 		Severity        string `json:"severity"`
 	} `json:"impacts"`
+}
+
+type FetchOptions struct {
+	BaseURL           string
+	ProjectKey        string
+	Token             string
+	SoftwareQualities []string
+	Severities        []string
+	IsNewCodePeriod   bool
+	Branch            string
+	PullRequest       string
+}
+
+type FetchResult struct {
+	Issues    []Issue
+	Total     int
+	Truncated bool
 }
 
 type Paging struct {
@@ -61,45 +79,74 @@ func isValidURL(s string) bool {
 }
 
 func fetchIssues(projectKey, token string, softwareQualities, severities []string, isNewCodePeriod bool) ([]Issue, error) {
+	res, err := fetchIssuesWithOptions(FetchOptions{
+		BaseURL:           SONAR_URL,
+		ProjectKey:        projectKey,
+		Token:             token,
+		SoftwareQualities: softwareQualities,
+		Severities:        severities,
+		IsNewCodePeriod:   isNewCodePeriod,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.Issues, nil
+}
+
+func fetchIssuesWithOptions(opts FetchOptions) (FetchResult, error) {
 	var allIssues []Issue
+	var total int
 	client := &http.Client{Timeout: 15 * time.Second}
+
+	baseURL := opts.BaseURL
+	if baseURL == "" {
+		baseURL = SONAR_URL
+	}
+
+	severities := opts.Severities
+	if len(severities) == 0 {
+		severities = []string{"BLOCKER", "HIGH", "MEDIUM", "LOW"}
+	}
 
 	p := 1
 	ps := 500
 
 	for {
-		req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/issues/search", SONAR_URL), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/issues/search", baseURL), nil)
 		if err != nil {
-			return nil, err
+			return FetchResult{}, err
 		}
 
 		q := req.URL.Query()
-		q.Add("componentKeys", projectKey)
+		q.Add("componentKeys", opts.ProjectKey)
 		q.Add("statuses", "OPEN,CONFIRMED")
-	if len(severities) == 0 {
-		severities = []string{"BLOCKER", "HIGH", "MEDIUM", "LOW"}
-	}
-	q.Add("impactSeverities", strings.Join(severities, ","))
-		q.Add("impactSoftwareQualities", strings.Join(softwareQualities, ","))
-		if isNewCodePeriod {
+		q.Add("impactSeverities", strings.Join(severities, ","))
+		q.Add("impactSoftwareQualities", strings.Join(opts.SoftwareQualities, ","))
+		if opts.IsNewCodePeriod {
 			q.Add("inNewCodePeriod", "true")
+		}
+		if opts.Branch != "" {
+			q.Add("branch", opts.Branch)
+		}
+		if opts.PullRequest != "" {
+			q.Add("pullRequest", opts.PullRequest)
 		}
 		q.Add("p", strconv.Itoa(p))
 		q.Add("ps", strconv.Itoa(ps))
 		req.URL.RawQuery = q.Encode()
 
-		req.SetBasicAuth(token, "")
+		req.SetBasicAuth(opts.Token, "")
 
 		resp, err := client.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("network or connection issue: %w", err)
+			return FetchResult{}, fmt.Errorf("network or connection issue: %w", err)
 		}
 
 		var data Response
 		decodeErr := json.NewDecoder(resp.Body).Decode(&data)
 		resp.Body.Close()
 		if decodeErr != nil {
-			return nil, fmt.Errorf("failed to decode response: %w", decodeErr)
+			return FetchResult{}, fmt.Errorf("failed to decode response: %w", decodeErr)
 		}
 
 		if resp.StatusCode != 200 {
@@ -110,9 +157,10 @@ func fetchIssues(projectKey, token string, softwareQualities, severities []strin
 			if resp.StatusCode == 401 {
 				errMsg += "\nTip: This might be an invalid token or lack of permissions."
 			}
-			return nil, fmt.Errorf("failed to fetch issues (Status Code: %d)\nDetails: %s", resp.StatusCode, errMsg)
+			return FetchResult{}, fmt.Errorf("failed to fetch issues (Status Code: %d)\nDetails: %s", resp.StatusCode, errMsg)
 		}
 
+		total = data.Paging.Total
 		allIssues = append(allIssues, data.Issues...)
 
 		if len(data.Issues) == 0 || len(allIssues) >= data.Paging.Total || (p+1)*ps > 10000 {
@@ -129,26 +177,33 @@ func fetchIssues(projectKey, token string, softwareQualities, severities []strin
 		"BLOCKER": 5,
 	}
 
-	// Map modern impacts to the severity field, selecting the highest matching impact severity
+	// Map modern impacts to the severity and softwareQuality fields, selecting the highest matching impact
 	for i := range allIssues {
 		bestSeverity := ""
+		bestQuality := ""
 		bestRank := 0
 		for _, impact := range allIssues[i].Impacts {
-			for _, sq := range softwareQualities {
+			for _, sq := range opts.SoftwareQualities {
 				if impact.SoftwareQuality == sq {
 					if rank := severityRank[impact.Severity]; rank > bestRank {
 						bestRank = rank
 						bestSeverity = impact.Severity
+						bestQuality = impact.SoftwareQuality
 					}
 				}
 			}
 		}
 		if bestSeverity != "" {
 			allIssues[i].Severity = bestSeverity
+			allIssues[i].SoftwareQuality = bestQuality
 		} else if allIssues[i].Severity == "" {
 			allIssues[i].Severity = "LOW"
 		}
 	}
 
-	return allIssues, nil
+	return FetchResult{
+		Issues:    allIssues,
+		Total:     total,
+		Truncated: total > 10000,
+	}, nil
 }

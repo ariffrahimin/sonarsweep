@@ -62,7 +62,7 @@ func exportToCSV(issues []Issue, projectKey string) (string, error) {
 	writer := csv.NewWriter(file)
 
 	fields := []string{
-		"key", "rule", "impact_severity", "component", "line",
+		"key", "rule", "impact_severity", "software_quality", "component", "line",
 		"message", "status", "effort", "author", "creationDate",
 	}
 	if err := writer.Write(fields); err != nil {
@@ -83,6 +83,7 @@ func exportToCSV(issues []Issue, projectKey string) (string, error) {
 			issue.Key,
 			issue.Rule,
 			issue.Severity,
+			issue.SoftwareQuality,
 			component,
 			lineStr,
 			issue.Message,

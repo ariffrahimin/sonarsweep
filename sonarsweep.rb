@@ -15,8 +15,14 @@ class Sonarsweep < Formula
   end
 
   on_linux do
-    url "https://github.com/ariffrahimin/sonarsweep/releases/download/vVERSION_PLACEHOLDER/sonarsweep-linux-amd64.tar.gz"
-    sha256 "SHA256_LINUX_AMD64_PLACEHOLDER"
+    on_arm do
+      url "https://github.com/ariffrahimin/sonarsweep/releases/download/vVERSION_PLACEHOLDER/sonarsweep-linux-arm64.tar.gz"
+      sha256 "SHA256_LINUX_ARM64_PLACEHOLDER"
+    end
+    on_intel do
+      url "https://github.com/ariffrahimin/sonarsweep/releases/download/vVERSION_PLACEHOLDER/sonarsweep-linux-amd64.tar.gz"
+      sha256 "SHA256_LINUX_AMD64_PLACEHOLDER"
+    end
   end
 
   def install

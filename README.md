@@ -136,11 +136,17 @@ SonarSweep supports full command-line operation for automation and scripting:
 | `--view-config` | Print current configuration | `sonarsweep --view-config` |
 | `--list-projects` | List all saved projects | `sonarsweep --list-projects` |
 | `--add-project <key>` | Add a project to config | `sonarsweep --add-project my-project` |
+| `--remove-project <key>` | Remove a project from config | `sonarsweep --remove-project my-project` |
+| `--set-url <url>` | Set or update SonarQube URL | `sonarsweep --set-url http://localhost:9000` |
+| `--set-token <token>` | Save or update token in OS keychain | `sonarsweep --set-token squ_12345` |
 | `-p`, `--project <key>` | Select project key for headless run | `sonarsweep --project my-project --dry-run` |
 | `--export <path>` | Override CSV export path | `sonarsweep --export /tmp/output.csv` |
 | `--dry-run` | Fetch issues without saving | `sonarsweep --dry-run` |
 | `-q`, `--quiet` | Headless mode (no TUI) | `sonarsweep --quiet` |
 | `-s`, `--severity` | Filter by severities | `sonarsweep --severity LOW` or `sonarsweep -s LOW,MEDIUM` |
+| `--quality` | Filter by software qualities | `sonarsweep --quality SECURITY,RELIABILITY` |
+| `-b`, `--branch <name>` | Filter issues by SonarQube branch | `sonarsweep -p my-project -b develop --dry-run` |
+| `--pr <id>` | Filter issues by pull request ID | `sonarsweep -p my-project --pr 42 --dry-run` |
 | `--overall` | Fetch overall code issues instead of new code only | `sonarsweep --dry-run --overall` |
 
 ---

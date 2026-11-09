@@ -166,14 +166,16 @@ jobs:
           SONAR_DARWIN_ARM64=$(find "$ARTIFACTS_DIR" -name "sonarsweep-darwin-arm64.tar.gz" -type f | head -1)
           SONAR_DARWIN_AMD64=$(find "$ARTIFACTS_DIR" -name "sonarsweep-darwin-amd64.tar.gz" -type f | head -1)
           SONAR_LINUX=$(find "$ARTIFACTS_DIR" -name "sonarsweep-linux-amd64.tar.gz" -type f | head -1)
+          SONAR_LINUX_ARM64=$(find "$ARTIFACTS_DIR" -name "sonarsweep-linux-arm64.tar.gz" -type f | head -1)
           SONAR_WINDOWS=$(find "$ARTIFACTS_DIR" -name "sonarsweep-windows-amd64.zip" -type f | head -1)
 
           echo "DARWIN_ARM64: $SONAR_DARWIN_ARM64"
           echo "DARWIN_AMD64: $SONAR_DARWIN_AMD64"
           echo "LINUX: $SONAR_LINUX"
+          echo "LINUX_ARM64: $SONAR_LINUX_ARM64"
           echo "WINDOWS: $SONAR_WINDOWS"
 
-          for f in "$SONAR_DARWIN_ARM64" "$SONAR_DARWIN_AMD64" "$SONAR_LINUX" "$SONAR_WINDOWS"; do
+          for f in "$SONAR_DARWIN_ARM64" "$SONAR_DARWIN_AMD64" "$SONAR_LINUX" "$SONAR_LINUX_ARM64" "$SONAR_WINDOWS"; do
             if [ ! -f "$f" ]; then
               echo "Missing artifact: $f"
               exit 1
@@ -183,6 +185,7 @@ jobs:
           SHA_DARWIN_ARM64=$(shasum -a 256 "$SONAR_DARWIN_ARM64" | awk '{print $1}')
           SHA_DARWIN_AMD64=$(shasum -a 256 "$SONAR_DARWIN_AMD64" | awk '{print $1}')
           SHA_LINUX=$(shasum -a 256 "$SONAR_LINUX" | awk '{print $1}')
+          SHA_LINUX_ARM64=$(shasum -a 256 "$SONAR_LINUX_ARM64" | awk '{print $1}')
           SHA_WINDOWS=$(shasum -a 256 "$SONAR_WINDOWS" | awk '{print $1}')
 
           cd homebrew-tap
@@ -205,8 +208,14 @@ jobs:
             end
 
             on_linux do
-              url "https://github.com/ariffrahimin/sonarsweep/releases/download/${VERSION}/sonarsweep-linux-amd64.tar.gz"
-              sha256 "$SHA_LINUX"
+              on_arm do
+                url "https://github.com/ariffrahimin/sonarsweep/releases/download/${VERSION}/sonarsweep-linux-arm64.tar.gz"
+                sha256 "$SHA_LINUX_ARM64"
+              end
+              on_intel do
+                url "https://github.com/ariffrahimin/sonarsweep/releases/download/${VERSION}/sonarsweep-linux-amd64.tar.gz"
+                sha256 "$SHA_LINUX"
+              end
             end
 
             def install

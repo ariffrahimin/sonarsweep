@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
@@ -19,19 +20,25 @@ USAGE:
   sonarsweep [flags]
 
 FLAGS:
-  -h, --help           Show this help message and exit
-  -v, --version        Show version information and exit
-  --reset              Reset the saved URL, Projects, and Keychain Token
-  -c, --config <path>  Use a different configuration file
-  --view-config        Print current configuration and exit
-  --list-projects      List all saved projects and exit
-  --add-project <key>  Add a project to the configuration
-  -p, --project <key>  Select project key for headless run
-  --export <path>      Override the CSV export path
-  --dry-run            Fetch issues but skip CSV export
-  -q, --quiet          Run in headless mode (no TUI)
-  -s, --severity <l>   Filter by severities (BLOCKER,HIGH,MEDIUM,LOW)
-  --overall            Fetch issues from overall code (default: new code only)
+  -h, --help                Show this help message and exit
+  -v, --version             Show version information and exit
+  --reset                   Reset the saved URL, Projects, and Keychain Token
+  -c, --config <path>       Use a different configuration file
+  --view-config             Print current configuration and exit
+  --list-projects           List all saved projects and exit
+  --add-project <key>       Add a project to the configuration
+  --remove-project <key>    Remove a project from the configuration
+  --set-url <url>           Set or update the SonarQube URL in configuration
+  --set-token <token>       Save or update the SonarQube token in OS keychain
+  -p, --project <key>       Select project key for headless run
+  --export <path>           Override the CSV export path
+  --dry-run                 Fetch issues but skip CSV export
+  -q, --quiet               Run in headless mode (no TUI)
+  -s, --severity <list>     Filter by severities (BLOCKER,HIGH,MEDIUM,LOW)
+  --quality <list>          Filter by software qualities (RELIABILITY,SECURITY,MAINTAINABILITY)
+  -b, --branch <name>       Filter issues by SonarQube branch
+  --pr <id>                 Filter issues by SonarQube pull request ID
+  --overall                 Fetch issues from overall code (default: new code only)
 
 EXAMPLES:
   sonarsweep --help
@@ -60,18 +67,24 @@ func main() {
 	defer closeDebug()
 
 	var (
-		help         bool
-		version      bool
-		reset        bool
-		viewConfig   bool
-		listProjects bool
-		addProject   string
-		project      string
-		exportPath   string
-		dryRun       bool
-		quiet        bool
-		severities   string
-		overall      bool
+		help          bool
+		version       bool
+		reset         bool
+		viewConfig    bool
+		listProjects  bool
+		addProject    string
+		removeProject string
+		setURL        string
+		setToken      string
+		project       string
+		exportPath    string
+		dryRun        bool
+		quiet         bool
+		severities    string
+		qualities     string
+		branch        string
+		pullRequest   string
+		overall       bool
 	)
 
 	flag.BoolVar(&help, "help", false, "Show this help message and exit")
@@ -82,6 +95,9 @@ func main() {
 	flag.BoolVar(&viewConfig, "view-config", false, "Print current configuration and exit")
 	flag.BoolVar(&listProjects, "list-projects", false, "List all saved projects and exit")
 	flag.StringVar(&addProject, "add-project", "", "Add a project to the configuration")
+	flag.StringVar(&removeProject, "remove-project", "", "Remove a project from the configuration")
+	flag.StringVar(&setURL, "set-url", "", "Set or update the SonarQube URL in configuration")
+	flag.StringVar(&setToken, "set-token", "", "Save or update the SonarQube token in OS keychain")
 	flag.StringVar(&project, "project", "", "Select project key for headless run")
 	flag.StringVar(&project, "p", "", "Select project key for headless run (shorthand)")
 	flag.StringVar(&exportPath, "export", "", "Override the CSV export path")
@@ -92,6 +108,10 @@ func main() {
 	flag.StringVar(&configPath, "c", "", "Use a different configuration file (shorthand)")
 	flag.StringVar(&severities, "severity", "", "Filter by impact severities (comma-separated: BLOCKER,HIGH,MEDIUM,LOW)")
 	flag.StringVar(&severities, "s", "", "Filter by impact severities (comma-separated: BLOCKER,HIGH,MEDIUM,LOW) (shorthand)")
+	flag.StringVar(&qualities, "quality", "", "Filter by software qualities (comma-separated: RELIABILITY,SECURITY,MAINTAINABILITY)")
+	flag.StringVar(&branch, "branch", "", "Filter issues by SonarQube branch")
+	flag.StringVar(&branch, "b", "", "Filter issues by SonarQube branch (shorthand)")
+	flag.StringVar(&pullRequest, "pr", "", "Filter issues by SonarQube pull request ID")
 	flag.BoolVar(&overall, "overall", false, "Fetch issues from overall code instead of new code period")
 
 	flag.Usage = printHelp
@@ -137,7 +157,65 @@ func main() {
 		os.Exit(0)
 	}
 
-	isHeadless := quiet || dryRun || exportPath != "" || project != ""
+	isHeadless := quiet || dryRun || exportPath != "" || project != "" || branch != "" || pullRequest != ""
+
+	if setURL != "" {
+		trimmedURL := strings.TrimRight(strings.TrimSpace(setURL), "/")
+		if !isValidURL(trimmedURL) {
+			fmt.Fprintln(os.Stderr, "Error: Invalid URL. Must start with http:// or https:// and have a valid host.")
+			os.Exit(1)
+		}
+		cfg := loadConfig()
+		cfg.SonarURL = trimmedURL
+		if err := saveConfig(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to save config: %v\n", err)
+			os.Exit(1)
+		}
+		if !quiet && !isHeadless {
+			fmt.Printf("SonarQube URL updated to '%s'.\n", trimmedURL)
+		}
+		if !isHeadless && addProject == "" && removeProject == "" && setToken == "" {
+			os.Exit(0)
+		}
+	}
+
+	if setToken != "" {
+		trimmedToken := strings.TrimSpace(setToken)
+		if err := StoreToken(trimmedToken); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to store token in keychain: %v\n", err)
+			os.Exit(1)
+		}
+		if !quiet && !isHeadless {
+			fmt.Println("Authentication token updated in OS keychain.")
+		}
+		if !isHeadless && addProject == "" && removeProject == "" {
+			os.Exit(0)
+		}
+	}
+
+	if removeProject != "" {
+		cfg := loadConfig()
+		updated, removed := removeProjectFromSlice(cfg.Projects, removeProject)
+		if !removed {
+			if !quiet {
+				fmt.Printf("Project '%s' not found in configuration.\n", removeProject)
+			}
+			os.Exit(1)
+		}
+		cfg.Projects = updated
+		if err := saveConfig(cfg); err != nil {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Failed to save config: %v\n", err)
+			}
+			os.Exit(1)
+		}
+		if !quiet && !isHeadless {
+			fmt.Printf("Project '%s' removed successfully.\n", removeProject)
+		}
+		if !isHeadless && addProject == "" {
+			os.Exit(0)
+		}
+	}
 
 	if addProject != "" {
 		cfg := loadConfig()
@@ -174,7 +252,7 @@ func main() {
 
 		if cfg.SonarURL == "" {
 			if !quiet {
-				fmt.Fprintln(os.Stderr, "Error: SonarQube URL is not configured. Run the TUI first to set it.")
+				fmt.Fprintln(os.Stderr, "Error: SonarQube URL is not configured. Use --set-url <url> or run the TUI first.")
 			}
 			os.Exit(1)
 		}
@@ -186,7 +264,7 @@ func main() {
 		}
 		if token == "" {
 			if !quiet {
-				fmt.Fprintln(os.Stderr, "Error: Authentication token is missing. Set USER_TOKEN env var or run the TUI to save it.")
+				fmt.Fprintln(os.Stderr, "Error: Authentication token is missing. Set USER_TOKEN env var, use --set-token, or run the TUI.")
 			}
 			os.Exit(1)
 		}
@@ -214,16 +292,34 @@ func main() {
 			severitiesToUse = parseSeverities(severities)
 		}
 
+		qualitiesToUse := cfg.SoftwareQualities
+		if qualities != "" {
+			qualitiesToUse = parseSoftwareQualities(qualities)
+		}
+
 		if !quiet {
 			fmt.Printf("Fetching issues for project: %s\n", projectKey)
 		}
 
-		issues, err := fetchIssues(projectKey, token, cfg.SoftwareQualities, severitiesToUse, !overall)
+		res, err := fetchIssuesWithOptions(FetchOptions{
+			BaseURL:           cfg.SonarURL,
+			ProjectKey:        projectKey,
+			Token:             token,
+			SoftwareQualities: qualitiesToUse,
+			Severities:        severitiesToUse,
+			IsNewCodePeriod:   !overall,
+			Branch:            branch,
+			PullRequest:       pullRequest,
+		})
 		if err != nil {
 			if !quiet {
 				fmt.Fprintf(os.Stderr, "Error fetching issues: %v\n", err)
 			}
 			os.Exit(1)
+		}
+		issues := res.Issues
+		if res.Truncated && !quiet {
+			fmt.Fprintf(os.Stderr, "Warning: Export capped at SonarQube's 10,000 issue limit (out of %d total).\n", res.Total)
 		}
 
 		if dryRun {

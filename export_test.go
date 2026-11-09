@@ -17,14 +17,15 @@ func TestExportToCSV_CreatesFileAndHandlesErrors(t *testing.T) {
 
 	issues := []Issue{
 		{
-			Key:       "ISSUE-1",
-			Rule:      "rule-1",
-			Severity:  "HIGH",
-			Component: "project:src/main.go",
-			Line:      10,
-			Message:   "Bad code",
-			Status:    "OPEN",
-			Effort:    "10min",
+			Key:             "ISSUE-1",
+			Rule:            "rule-1",
+			Severity:        "HIGH",
+			SoftwareQuality: "SECURITY",
+			Component:       "project:src/main.go",
+			Line:            10,
+			Message:         "Bad code",
+			Status:          "OPEN",
+			Effort:          "10min",
 		},
 	}
 
@@ -56,6 +57,9 @@ func TestExportToCSV_CreatesFileAndHandlesErrors(t *testing.T) {
 
 	if records[1][0] != "ISSUE-1" {
 		t.Errorf("Expected first column of data to be 'ISSUE-1', got %s", records[1][0])
+	}
+	if records[0][3] != "software_quality" || records[1][3] != "SECURITY" {
+		t.Errorf("Expected column 3 to be software_quality='SECURITY', got header=%q val=%q", records[0][3], records[1][3])
 	}
 }
 

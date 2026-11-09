@@ -312,3 +312,61 @@ func TestParseSeverities_NormalizesAndFiltersCLIInput(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_InvalidAndDuplicateSoftwareQualities(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "sonarsweep.json")
+
+	originalConfigPath := configPath
+	configPath = tmpFile
+	defer func() { configPath = originalConfigPath }()
+
+	jsonContent := `{
+		"sonarqube_url": "http://test.com:9000",
+		"software_qualities": ["security", "INVALID", "SECURITY", "reliability"]
+	}`
+	_ = os.WriteFile(tmpFile, []byte(jsonContent), 0600)
+
+	cfg := loadConfig()
+	want := []string{"SECURITY", "RELIABILITY"}
+	if len(cfg.SoftwareQualities) != len(want) {
+		t.Fatalf("Expected %v, got %v", want, cfg.SoftwareQualities)
+	}
+	for i := range want {
+		if cfg.SoftwareQualities[i] != want[i] {
+			t.Errorf("Expected[%d] = %s, got %s", i, want[i], cfg.SoftwareQualities[i])
+		}
+	}
+}
+
+func TestParseSoftwareQualities_NormalizesAndFiltersCLIInput(t *testing.T) {
+	got := parseSoftwareQualities(" security , invalid, maintainability, SECURITY ")
+	want := []string{"SECURITY", "MAINTAINABILITY"}
+	if len(got) != len(want) {
+		t.Fatalf("Expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Expected[%d] = %s, got %s", i, want[i], got[i])
+		}
+	}
+}
+
+func TestRemoveProjectFromSlice(t *testing.T) {
+	initial := []string{"proj-a", "proj-b", "proj-c"}
+	updated, removed := removeProjectFromSlice(initial, "proj-b")
+	if !removed {
+		t.Fatalf("Expected removed=true when project exists")
+	}
+	want := []string{"proj-a", "proj-c"}
+	if len(updated) != len(want) || updated[0] != "proj-a" || updated[1] != "proj-c" {
+		t.Errorf("Expected %v, got %v", want, updated)
+	}
+
+	_, removedMissing := removeProjectFromSlice(updated, "non-existent")
+	if removedMissing {
+		t.Errorf("Expected removed=false when project does not exist")
+	}
+}
+
+
+
